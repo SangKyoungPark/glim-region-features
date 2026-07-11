@@ -9,6 +9,14 @@ RegionExtractor::RegionExtractor()
 {
 }
 
+std::vector<Region> RegionExtractor::ExtractFromGray(const cv::Mat& src,
+	const IPreprocessor& preprocessor, int minArea) const
+{
+	// 전처리기(기본 CPU threshold, GPU 구현으로 교체 가능)로 이진화 후 라벨링.
+	cv::Mat bin = preprocessor.Binarize(src);
+	return Extract(bin, minArea);
+}
+
 std::vector<Region> RegionExtractor::Extract(const cv::Mat& binary, int minArea) const
 {
 	std::vector<Region> regions;

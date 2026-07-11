@@ -80,6 +80,7 @@
     <ClInclude Include="src\Domain\ScoreResult.h" />
     <ClInclude Include="src\Adapter\RegionExtractor.h" />
     <ClInclude Include="src\Adapter\CsvExporter.h" />
+    <ClInclude Include="src\Adapter\IPreprocessor.h" />
     <ClInclude Include="src\UseCase\FeatureCalculator.h" />
     <ClInclude Include="src\UseCase\ScoreNormalizer.h" />
     <ClInclude Include="src\UseCase\SelectShapeRule.h" />
@@ -91,6 +92,7 @@
     <ClCompile Include="src\Domain\FeatureVector.cpp" />
     <ClCompile Include="src\Adapter\RegionExtractor.cpp" />
     <ClCompile Include="src\Adapter\CsvExporter.cpp" />
+    <ClCompile Include="src\Adapter\IPreprocessor.cpp" />
     <ClCompile Include="src\UseCase\FeatureCalculator.cpp" />
     <ClCompile Include="src\UseCase\ScoreNormalizer.cpp" />
     <ClCompile Include="src\UseCase\SelectShapeRule.cpp" />

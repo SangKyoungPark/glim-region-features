@@ -7,6 +7,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
 
 #include <opencv2/core.hpp>
@@ -118,9 +119,15 @@ std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const Profil
 }
 
 bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& outputCsv,
-	const ProfileLoader* profile, BatchStat& statOut)
+	const ProfileLoader* profile, BatchStat& statOut,
+	const IPreprocessor* preprocessor)
 {
 	statOut = BatchStat();
+	const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+
+	// 전처리기: null 이면 기본 CPU 구현(GPU 구현으로 교체 가능)
+	CpuPreprocessor defaultPre;
+	const IPreprocessor& pre = (preprocessor != NULL) ? *preprocessor : defaultPre;
 
 	// --- 파일 수집 ---
 	std::vector<std::string> files;
@@ -170,8 +177,13 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 				continue;
 			}
 
-			cv::Mat bin;
-			cv::threshold(img, bin, 127.0, 255.0, cv::THRESH_BINARY);
+			// 전처리(원본→이진). GPU 전처리기 삽입 지점.
+			cv::Mat bin = pre.Binarize(img);
+			if (bin.empty())
+			{
+				statOut.m_failedFiles.push_back(fileName + " (binarize failed)");
+				continue;
+			}
 
 			std::vector<Region> regions = extractor.Extract(bin, 1);
 
@@ -206,6 +218,9 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 
 	ofs.flush();
 	ofs.close();
+
+	const std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
+	statOut.m_elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 	return true;
 }
 

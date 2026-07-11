@@ -49,6 +49,7 @@
 #include "Domain/Region.h"
 #include "Domain/FeatureVector.h"
 #include "Domain/ScoreResult.h"
+#include "Adapter/IPreprocessor.h"
 #include "Adapter/RegionExtractor.h"
 #include "Adapter/CsvExporter.h"
 #include "UseCase/FeatureCalculator.h"
