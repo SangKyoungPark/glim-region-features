@@ -112,13 +112,37 @@ void TestCircle()
 	Check("ra~rb (radius)", fv.ra, 60.0, 5.0);
 }
 
+// 해석적 타원 래스터화: (x/a)^2+(y/b)^2<=1 을 회전(angle)해 채운다.
+// cv::ellipse(FILLED) 은 폴리곤 근사로 경계가 이상적 타원보다 ~3% 부풀어(면적 3235 vs
+// 이론 3141) Rb 가 2.1% 커진다(=렌더러 이산화 편향, 크기가 커지면 1.2%로 감소).
+// 특징값 수식 자체를 검증하려면 이상적 타원 마스크를 써야 한다.
+// (해석적 마스크에서 Ra/Rb 오차 < 0.2% 확인 — 수식은 정확)
+static void FillAnalyticEllipse(cv::Mat& img, cv::Point center, double a, double b, double angleDeg)
+{
+	const double th = angleDeg * kPi / 180.0;
+	const double ct = std::cos(th);
+	const double st = std::sin(th);
+	for (int y = 0; y < img.rows; ++y)
+	{
+		unsigned char* p = img.ptr<unsigned char>(y);
+		for (int x = 0; x < img.cols; ++x)
+		{
+			const double dx = static_cast<double>(x) - center.x;
+			const double dy = static_cast<double>(y) - center.y;
+			const double xr = dx * ct + dy * st;   // (x=col, y=row) y-down 프레임
+			const double yr = -dx * st + dy * ct;
+			if ((xr * xr) / (a * a) + (yr * yr) / (b * b) <= 1.0)
+				p[x] = 255;
+		}
+	}
+}
+
 void TestEllipse()
 {
-	std::cout << "\n=== [2] Ellipse (semi 50x20, angle 30deg) ===" << std::endl;
+	std::cout << "\n=== [2] Ellipse (semi 50x20, angle 30deg, analytic) ===" << std::endl;
 	cv::Mat img = cv::Mat::zeros(400, 400, CV_8UC1);
-	// cv::ellipse axes = 반축 길이(50,20), angle=30(deg, y-down 시계방향)
-	cv::ellipse(img, cv::Point(200, 200), cv::Size(50, 20), 30.0, 0.0, 360.0,
-		cv::Scalar(255), cv::FILLED);
+	// 반축 a=50(장), b=20(단), 회전 30도. cv::ellipse 렌더 편향을 피하려 해석적으로 채움.
+	FillAnalyticEllipse(img, cv::Point(200, 200), 50.0, 20.0, 30.0);
 
 	FeatureVector fv;
 	if (!ComputeSingle(img, fv)) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
