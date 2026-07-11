@@ -282,28 +282,100 @@ void CGlimRegionViewerDlg::OnPaint()
 
 void CGlimRegionViewerDlg::DrawImageView(CDC* pDC)
 {
-	// [feat: 이미지 뷰 렌더링] 구현 예정 — 지금은 테두리 + 안내만
-	pDC->FillSolidRect(m_imgFrameRect, RGB(40, 40, 40));
-	CBrush border(RGB(120, 120, 120));
-	pDC->FrameRect(m_imgFrameRect, &border);
+	// 더블버퍼링: 프레임 크기 메모리 DC 에 그린 뒤 한 번에 BitBlt(깜빡임 방지)
+	const CRect fr = m_imgFrameRect;
+	const int fw = fr.Width();
+	const int fh = fr.Height();
+	if (fw <= 0 || fh <= 0)
+		return;
 
-	pDC->SetBkMode(TRANSPARENT);
-	pDC->SetTextColor(RGB(200, 200, 200));
-	CRect r = m_imgFrameRect;
-	pDC->DrawText(_T("No image loaded"), &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+	CDC mem;
+	mem.CreateCompatibleDC(pDC);
+	CBitmap bmp;
+	bmp.CreateCompatibleBitmap(pDC, fw, fh);
+	CBitmap* pOld = mem.SelectObject(&bmp);
+
+	mem.FillSolidRect(0, 0, fw, fh, RGB(40, 40, 40));
+
+	cv::Mat disp = BuildOverlayMat();
+	if (!disp.empty())
+	{
+		// 정수배 확대. 이미지가 프레임보다 크면 프레임에 맞게 축소(fit).
+		const double sx = static_cast<double>(fw) / disp.cols;
+		const double sy = static_cast<double>(fh) / disp.rows;
+		double fit = (sx < sy) ? sx : sy;
+		double scale = (m_zoom > 0) ? static_cast<double>(m_zoom) : 1.0;
+		if (scale > fit)
+			scale = fit;
+
+		int dw = static_cast<int>(disp.cols * scale);
+		int dh = static_cast<int>(disp.rows * scale);
+		if (dw < 1) dw = 1;
+		if (dh < 1) dh = 1;
+		const int dx = (fw - dw) / 2;
+		const int dy = (fh - dh) / 2;
+		CRect dest(dx, dy, dx + dw, dy + dh);
+		DrawMatToDC(&mem, disp, dest);
+	}
+	else
+	{
+		mem.SetBkMode(TRANSPARENT);
+		mem.SetTextColor(RGB(200, 200, 200));
+		CRect r(0, 0, fw, fh);
+		mem.DrawText(_T("No image loaded"), &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+	}
+
+	CBrush border(RGB(120, 120, 120));
+	CRect full(0, 0, fw, fh);
+	mem.FrameRect(&full, &border);
+
+	pDC->BitBlt(fr.left, fr.top, fw, fh, &mem, 0, 0, SRCCOPY);
+	mem.SelectObject(pOld);
 }
 
 cv::Mat CGlimRegionViewerDlg::BuildOverlayMat()
 {
-	// [feat: 오버레이] 구현 예정
-	return cv::Mat();
+	// 표시용 BGR 생성(오버레이 컨투어는 후속 커밋에서 추가)
+	if (m_binImage.empty())
+		return cv::Mat();
+	cv::Mat bgr;
+	cv::cvtColor(m_binImage, bgr, cv::COLOR_GRAY2BGR);
+	return bgr;
 }
 
 bool CGlimRegionViewerDlg::DrawMatToDC(CDC* pDC, const cv::Mat& bgr, const CRect& dest)
 {
-	// [feat: 이미지 뷰 렌더링] 구현 예정
-	(void)pDC; (void)bgr; (void)dest;
-	return false;
+	// cv::Mat(BGR,8UC3) → 4바이트 정렬 top-down DIB → StretchDIBits(COLORONCOLOR=최근접)
+	if (bgr.empty() || bgr.type() != CV_8UC3)
+		return false;
+
+	const int w = bgr.cols;
+	const int h = bgr.rows;
+	const int stride = ((w * 3 + 3) / 4) * 4; // 임의 폭 대응(4바이트 정렬)
+
+	std::vector<BYTE> buf(static_cast<size_t>(stride) * h);
+	for (int y = 0; y < h; ++y)
+	{
+		const unsigned char* src = bgr.ptr<unsigned char>(y);
+		memcpy(&buf[static_cast<size_t>(y) * stride], src, static_cast<size_t>(w) * 3);
+	}
+
+	BITMAPINFO bmi;
+	::ZeroMemory(&bmi, sizeof(bmi));
+	bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bmi.bmiHeader.biWidth = w;
+	bmi.bmiHeader.biHeight = -h; // 음수 = top-down(cv::Mat 행순서와 일치)
+	bmi.bmiHeader.biPlanes = 1;
+	bmi.bmiHeader.biBitCount = 24;
+	bmi.bmiHeader.biCompression = BI_RGB;
+
+	const int oldMode = pDC->SetStretchBltMode(COLORONCOLOR); // 이진 픽셀 경계 유지
+	::StretchDIBits(pDC->GetSafeHdc(),
+		dest.left, dest.top, dest.Width(), dest.Height(),
+		0, 0, w, h,
+		&buf[0], &bmi, DIB_RGB_COLORS, SRCCOPY);
+	pDC->SetStretchBltMode(oldMode);
+	return true;
 }
 
 // ------------------------------------------------------------------
@@ -500,7 +572,11 @@ void CGlimRegionViewerDlg::OnBnClickedOverlay()
 
 void CGlimRegionViewerDlg::OnZoomChanged()
 {
-	// [feat: 이미지 뷰 렌더링] 구현 예정
+	const int sel = m_comboZoom.GetCurSel();
+	const int zooms[] = { 1, 2, 4, 8, 16 };
+	if (sel >= 0 && sel < 5)
+		m_zoom = zooms[sel];
+	InvalidateRect(m_imgFrameRect);
 }
 
 void CGlimRegionViewerDlg::OnProfileChanged()
