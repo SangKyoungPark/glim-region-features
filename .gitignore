@@ -1,0 +1,17 @@
+# Visual Studio / MSBuild build artifacts
+.vs/
+bin/
+obj/
+*.vcxproj.user
+*.suo
+*.user
+*.aps
+*.ncb
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+
+# Generated CSV output (test runs)
+*.csv
