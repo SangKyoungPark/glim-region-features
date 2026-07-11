@@ -144,7 +144,10 @@ void TestRectangle()
 	Check("area", fv.area, 120.0 * 60.0, 2.0);
 	Check("rectangularity", fv.rectangularity, 1.0, 3.0);
 	Check("aspect_ratio", fv.aspectRatio, 2.0, 5.0);       // 120/60
-	Check("anisometry>1", fv.anisometry, 1.732, 15.0);     // 직사각형 관성비 근사
+	// 솔리드 w×h 직사각형의 중심 2차 모멘트: mu20 = w^2/12, mu02 = h^2/12 → 등가타원
+	// Ra/Rb = sqrt(mu20/mu02) = w/h. 따라서 anisometry = 120/60 = 2.0 (기존 기대값
+	// 1.732=√3 은 산출 근거 오류였음). 구현값 2.00 이 정답.
+	Check("anisometry (w/h)", fv.anisometry, 2.0, 3.0);
 	CheckTrue("circularity < 0.85", fv.circularity < 0.85);
 }
 
