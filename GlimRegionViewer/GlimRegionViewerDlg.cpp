@@ -6,6 +6,9 @@
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 
+#include <algorithm>
+#include <shlobj.h>   // SHBrowseForFolder
+
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -308,17 +311,129 @@ bool CGlimRegionViewerDlg::DrawMatToDC(CDC* pDC, const cv::Mat& bgr, const CRect
 // ------------------------------------------------------------------
 void CGlimRegionViewerDlg::LoadFolder(const CString& dir)
 {
-	(void)dir; // [feat: 폴더 로드] 구현 예정
+	m_files.clear();
+	m_listFiles.DeleteAllItems();
+	m_curIndex = -1;
+
+	// 폴더 내 지원 이미지 수집(확장자 판정은 라이브러리와 공유)
+	CString pattern = dir + _T("\\*.*");
+	CFileFind finder;
+	BOOL found = finder.FindFile(pattern);
+	while (found)
+	{
+		found = finder.FindNextFile();
+		if (finder.IsDots() || finder.IsDirectory())
+			continue;
+		std::string path = ToStd(finder.GetFilePath());
+		std::string ext;
+		size_t dot = path.find_last_of('.');
+		if (dot != std::string::npos)
+			ext = path.substr(dot);
+		if (Grf::CsvExporter::IsSupportedImage(ext))
+			m_files.push_back(path);
+	}
+	std::sort(m_files.begin(), m_files.end());
+
+	for (size_t i = 0; i < m_files.size(); ++i)
+	{
+		std::string name = m_files[i];
+		size_t sl = name.find_last_of("\\/");
+		if (sl != std::string::npos)
+			name = name.substr(sl + 1);
+		m_listFiles.InsertItem(static_cast<int>(i), ToCStr(name));
+	}
+
+	CString msg;
+	msg.Format(_T("%d image(s) in folder."), static_cast<int>(m_files.size()));
+	SetStatus(msg);
+
+	if (!m_files.empty())
+	{
+		// 선택 변경이 OnFileListItemChanged → LoadImageAt 를 유발
+		m_listFiles.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+		m_listFiles.SetFocus();
+	}
+	else
+	{
+		m_binImage = cv::Mat();
+		m_regions.clear();
+		m_features.clear();
+		UpdateFeatureList();
+		InvalidateRect(m_imgFrameRect);
+	}
 }
 
 void CGlimRegionViewerDlg::LoadImageAt(int index)
 {
-	(void)index; // [feat: 이미지 로드] 구현 예정
+	if (index < 0 || index >= static_cast<int>(m_files.size()))
+		return;
+	m_curIndex = index;
+
+	try
+	{
+		cv::Mat gray = cv::imread(m_files[index], cv::IMREAD_GRAYSCALE);
+		if (gray.empty())
+		{
+			m_binImage = cv::Mat();
+			m_regions.clear();
+			m_features.clear();
+			m_highlightRegion = -1;
+			SetStatus(_T("이미지 로드 실패: ") + ToCStr(m_files[index]));
+			UpdateFeatureList();
+			InvalidateRect(m_imgFrameRect);
+			return;
+		}
+
+		// 완전 이진이 아닐 수 있으므로 0/255 정규화
+		cv::threshold(gray, m_binImage, 127.0, 255.0, cv::THRESH_BINARY);
+
+		AnalyzeCurrent();
+		UpdateFeatureList();
+
+		CString msg;
+		msg.Format(_T("%dx%d, region(s): %d"),
+			m_binImage.cols, m_binImage.rows, static_cast<int>(m_regions.size()));
+		SetStatus(msg);
+	}
+	catch (const cv::Exception& e)
+	{
+		m_binImage = cv::Mat();
+		m_regions.clear();
+		m_features.clear();
+		SetStatus(CString(_T("OpenCV 오류: ")) + CString(e.what()));
+	}
+	catch (...)
+	{
+		SetStatus(_T("이미지 처리 중 알 수 없는 오류."));
+	}
+
+	InvalidateRect(m_imgFrameRect);
 }
 
 void CGlimRegionViewerDlg::AnalyzeCurrent()
 {
-	// [feat: 이미지 로드] 구현 예정
+	m_regions.clear();
+	m_features.clear();
+	m_highlightRegion = -1;
+
+	if (m_binImage.empty())
+		return;
+
+	try
+	{
+		Grf::RegionExtractor extractor;
+		m_regions = extractor.Extract(m_binImage, 1);
+
+		Grf::FeatureCalculator calc;
+		m_features.reserve(m_regions.size());
+		for (size_t i = 0; i < m_regions.size(); ++i)
+			m_features.push_back(calc.Compute(m_regions[i]));
+	}
+	catch (...)
+	{
+		m_regions.clear();
+		m_features.clear();
+	}
 }
 
 void CGlimRegionViewerDlg::UpdateFeatureList()
@@ -336,12 +451,41 @@ void CGlimRegionViewerDlg::LoadProfileSelection()
 // ------------------------------------------------------------------
 void CGlimRegionViewerDlg::OnBnClickedOpenImage()
 {
-	// [feat: 단일 이미지 로드] 구현 예정
+	CFileDialog dlg(TRUE, NULL, NULL,
+		OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
+		_T("Images|*.bmp;*.png;*.jpg;*.jpeg;*.tif;*.tiff|All Files|*.*||"), this);
+	if (dlg.DoModal() != IDOK)
+		return;
+
+	m_files.clear();
+	m_listFiles.DeleteAllItems();
+	m_curIndex = -1;
+
+	m_files.push_back(ToStd(dlg.GetPathName()));
+	m_listFiles.InsertItem(0, dlg.GetFileName());
+	// 선택 → OnFileListItemChanged → LoadImageAt(0)
+	m_listFiles.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 }
 
 void CGlimRegionViewerDlg::OnBnClickedOpenFolder()
 {
-	// [feat: 폴더 로드] 구현 예정
+	TCHAR pathBuf[MAX_PATH] = { 0 };
+	BROWSEINFO bi;
+	::ZeroMemory(&bi, sizeof(bi));
+	bi.hwndOwner = GetSafeHwnd();
+	bi.pszDisplayName = pathBuf;
+	bi.lpszTitle = _T("Select a folder containing binary images");
+	bi.ulFlags = BIF_RETURNONLYFSDIRS;
+
+	LPITEMIDLIST pidl = ::SHBrowseForFolder(&bi);
+	if (pidl == NULL)
+		return;
+
+	TCHAR folder[MAX_PATH] = { 0 };
+	if (::SHGetPathFromIDList(pidl, folder))
+		LoadFolder(folder);
+
+	::CoTaskMemFree(pidl);
 }
 
 void CGlimRegionViewerDlg::OnBnClickedExportCsv()
@@ -366,9 +510,14 @@ void CGlimRegionViewerDlg::OnProfileChanged()
 
 void CGlimRegionViewerDlg::OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)
 {
-	(void)pNMHDR;
+	LPNMLISTVIEW pnmv = reinterpret_cast<LPNMLISTVIEW>(pNMHDR);
 	*pResult = 0;
-	// [feat: 폴더 로드] 구현 예정
+
+	// 선택이 새로 켜진 항목만 로드(위/아래 방향키 이동도 여기로 들어옴)
+	if ((pnmv->uNewState & LVIS_SELECTED) && !(pnmv->uOldState & LVIS_SELECTED))
+	{
+		LoadImageAt(pnmv->iItem);
+	}
 }
 
 void CGlimRegionViewerDlg::OnFeatureListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)
