@@ -1,5 +1,6 @@
 ﻿// Region.cpp
 #include "Domain/Region.h"
+#include <opencv2/imgproc.hpp> // cv::contourArea
 
 namespace Grf {
 
