@@ -8,6 +8,9 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <thread>
+#include <atomic>
+#include <mutex>
 #include <filesystem>
 
 #include <opencv2/core.hpp>
@@ -120,16 +123,16 @@ std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const Profil
 
 bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& outputCsv,
 	const ProfileLoader* profile, BatchStat& statOut,
-	const IPreprocessor* preprocessor)
+	int numThreads, const IPreprocessor* preprocessor)
 {
 	statOut = BatchStat();
 	const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
-	// 전처리기: null 이면 기본 CPU 구현(GPU 구현으로 교체 가능)
+	// 전처리기: null 이면 기본 CPU 구현(GPU 구현으로 교체 가능). const 공유(무상태).
 	CpuPreprocessor defaultPre;
 	const IPreprocessor& pre = (preprocessor != NULL) ? *preprocessor : defaultPre;
 
-	// --- 파일 수집 ---
+	// --- 파일 수집(정렬로 결정적 순서) ---
 	std::vector<std::string> files;
 	try
 	{
@@ -151,73 +154,119 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 	std::sort(files.begin(), files.end());
 	statOut.m_totalFiles = files.size();
 
-	// --- CSV 열기 ---
+	// --- CSV 열기(헤더만 먼저 기록, 본문은 병렬 처리 후 인덱스 순서로 기록) ---
 	std::ofstream ofs(outputCsv.c_str(), std::ios::binary);
 	if (!ofs.is_open())
 		return false;
-
 	ofs << BuildHeader(profile) << "\r\n";
 
-	RegionExtractor extractor;
-	FeatureCalculator calc;
+	// 파일별 결과 블록(각 파일의 CSV 행들을 순서대로 담음). 인덱스별 소유 → 락 불필요.
+	std::vector<std::string> blocks(files.size());
 
-	for (size_t f = 0; f < files.size(); ++f)
+	// 공유 카운터/보호
+	std::atomic<size_t> nextIdx(0);
+	std::atomic<size_t> processed(0);
+	std::atomic<long long> totalRegions(0);
+	std::mutex failMutex;
+
+	// 쓰레드 수 결정: 0=자동, 파일 수로 상한.
+	unsigned hw = std::thread::hardware_concurrency();
+	size_t nThreads = (numThreads > 0) ? static_cast<size_t>(numThreads) : (hw > 0 ? hw : 1);
+	if (nThreads < 1) nThreads = 1;
+	if (!files.empty() && nThreads > files.size()) nThreads = files.size();
+	if (files.empty()) nThreads = 1;
+
+	// 워커: 작업큐를 atomic 인덱스로 분배(작업 훔치기). 각 워커는 자신의 계산기 보유.
+	auto worker = [&]()
 	{
-		const std::string& path = files[f];
-		std::string fileName = path;
-		try { fileName = fs::path(path).filename().string(); }
-		catch (...) {}
-
-		try
+		RegionExtractor extractor;
+		FeatureCalculator calc;
+		for (;;)
 		{
-			cv::Mat img = cv::imread(path, cv::IMREAD_GRAYSCALE);
-			if (img.empty())
-			{
-				statOut.m_failedFiles.push_back(fileName + " (load failed)");
-				continue;
-			}
+			const size_t i = nextIdx.fetch_add(1);
+			if (i >= files.size())
+				break;
 
-			// 전처리(원본→이진). GPU 전처리기 삽입 지점.
-			cv::Mat bin = pre.Binarize(img);
-			if (bin.empty())
-			{
-				statOut.m_failedFiles.push_back(fileName + " (binarize failed)");
-				continue;
-			}
+			const std::string& path = files[i];
+			std::string fileName = path;
+			try { fileName = fs::path(path).filename().string(); }
+			catch (...) {}
 
-			std::vector<Region> regions = extractor.Extract(bin, 1);
-
-			if (regions.empty())
+			try
 			{
-				ofs << BuildEmptyRow(fileName, profile) << "\r\n";
-				++statOut.m_processedFiles;
-				continue;
-			}
+				cv::Mat img = cv::imread(path, cv::IMREAD_GRAYSCALE);
+				if (img.empty())
+				{
+					std::lock_guard<std::mutex> lk(failMutex);
+					statOut.m_failedFiles.push_back(fileName + " (load failed)");
+					continue;
+				}
 
-			for (size_t r = 0; r < regions.size(); ++r)
-			{
-				FeatureVector fv = calc.Compute(regions[r]);
-				ofs << BuildRegionRow(fileName, static_cast<int>(r), fv, profile) << "\r\n";
-				++statOut.m_totalRegions;
+				cv::Mat bin = pre.Binarize(img); // GPU 전처리기 삽입 지점
+				if (bin.empty())
+				{
+					std::lock_guard<std::mutex> lk(failMutex);
+					statOut.m_failedFiles.push_back(fileName + " (binarize failed)");
+					continue;
+				}
+
+				std::vector<Region> regions = extractor.Extract(bin, 1);
+
+				std::string block;
+				if (regions.empty())
+				{
+					block = BuildEmptyRow(fileName, profile);
+					block += "\r\n";
+				}
+				else
+				{
+					for (size_t r = 0; r < regions.size(); ++r)
+					{
+						FeatureVector fv = calc.Compute(regions[r]);
+						block += BuildRegionRow(fileName, static_cast<int>(r), fv, profile);
+						block += "\r\n";
+					}
+					totalRegions.fetch_add(static_cast<long long>(regions.size()));
+				}
+				blocks[i] = block;          // 인덱스 소유 → 경합 없음
+				processed.fetch_add(1);
 			}
-			++statOut.m_processedFiles;
+			catch (const cv::Exception& e)
+			{
+				std::lock_guard<std::mutex> lk(failMutex);
+				statOut.m_failedFiles.push_back(fileName + " (cv: " + e.what() + ")");
+			}
+			catch (const std::exception& e)
+			{
+				std::lock_guard<std::mutex> lk(failMutex);
+				statOut.m_failedFiles.push_back(fileName + " (std: " + e.what() + ")");
+			}
+			catch (...)
+			{
+				std::lock_guard<std::mutex> lk(failMutex);
+				statOut.m_failedFiles.push_back(fileName + " (unknown)");
+			}
 		}
-		catch (const cv::Exception& e)
-		{
-			statOut.m_failedFiles.push_back(fileName + " (cv: " + e.what() + ")");
-		}
-		catch (const std::exception& e)
-		{
-			statOut.m_failedFiles.push_back(fileName + " (std: " + e.what() + ")");
-		}
-		catch (...)
-		{
-			statOut.m_failedFiles.push_back(fileName + " (unknown)");
-		}
-	}
+	};
+
+	// nThreads-1 개 스폰 + 현재 쓰레드도 1개 참여.
+	std::vector<std::thread> pool;
+	pool.reserve(nThreads > 0 ? nThreads - 1 : 0);
+	for (size_t t = 1; t < nThreads; ++t)
+		pool.push_back(std::thread(worker));
+	worker();
+	for (size_t t = 0; t < pool.size(); ++t)
+		pool[t].join();
+
+	// 결과를 파일 인덱스 순서대로 기록(병렬이어도 순서/내용 결정적).
+	for (size_t i = 0; i < blocks.size(); ++i)
+		ofs << blocks[i];
 
 	ofs.flush();
 	ofs.close();
+
+	statOut.m_processedFiles = processed.load();
+	statOut.m_totalRegions = totalRegions.load();
 
 	const std::chrono::steady_clock::time_point t1 = std::chrono::steady_clock::now();
 	statOut.m_elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();

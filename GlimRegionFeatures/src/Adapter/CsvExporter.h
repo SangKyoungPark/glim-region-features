@@ -42,13 +42,15 @@ public:
 	// Region 없는 이미지 행(RegionIndex=-1).
 	static std::string BuildEmptyRow(const std::string& fileName, const ProfileLoader* profile);
 
-	// 폴더 전체를 CSV 파일로 저장. profile 이 null 이면 특징값만.
-	// preprocessor 가 null 이면 기본 CpuPreprocessor(threshold 127) 사용.
-	// CSV 행 순서는 파일 정렬 순서를 그대로 유지한다.
-	// 성공(파일 오픈)하면 true, 통계는 statOut 에 채운다.
+	// 폴더 전체를 CSV 파일로 저장(파일 단위 멀티쓰레드).
+	//  - profile 이 null 이면 특징값만.
+	//  - numThreads: 0=자동(hardware_concurrency), 그 외 지정 개수.
+	//  - preprocessor 가 null 이면 기본 CpuPreprocessor(threshold 127) 사용.
+	// CSV 행 순서는 파일 정렬 순서를 그대로 유지한다(병렬이어도 결과 바이트 동일).
+	// 성공(파일 오픈)하면 true, 통계는 statOut 에 채운다(m_elapsedMs 포함).
 	static bool ExportFolder(const std::string& inputDir, const std::string& outputCsv,
 		const ProfileLoader* profile, BatchStat& statOut,
-		const IPreprocessor* preprocessor = NULL);
+		int numThreads = 0, const IPreprocessor* preprocessor = NULL);
 
 	// 프로파일의 Score 특징값 이름 순서(컬럼 고정용).
 	static std::vector<std::string> ScoreFeatureNames(const ProfileLoader* profile);

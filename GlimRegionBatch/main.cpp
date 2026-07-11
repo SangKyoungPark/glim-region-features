@@ -1,11 +1,13 @@
 ﻿// main.cpp - GlimRegionBatch
-// 폴더 단위 배치 검사 콘솔.
-//  사용법: GlimRegionBatch.exe <입력폴더> <출력.csv> [프로파일.ini]
+// 폴더 단위 배치 검사 콘솔(파일 단위 멀티쓰레드).
+//  사용법: GlimRegionBatch.exe <입력폴더> <출력.csv> [프로파일.ini] [--threads N]
+//   --threads N : 워커 쓰레드 수(기본 0=자동=hardware_concurrency). 0 도 자동.
 //  실제 배치/CSV 생성 로직은 라이브러리의 Grf::CsvExporter 로 공용화되어 있다.
-//  (Viewer 의 CSV 내보내기와 동일 포맷 보장)
+//  (Viewer 의 CSV 내보내기와 동일 포맷 보장, 쓰레드 수와 무관하게 결과 바이트 동일)
 
 #include <iostream>
 #include <string>
+#include <cstdlib>
 
 #include "GlimRegionFeatures.h"
 
@@ -17,13 +19,33 @@ int main(int argc, char** argv)
 
 	if (argc < 3)
 	{
-		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]" << std::endl;
+		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini] [--threads N]" << std::endl;
 		return 1;
 	}
 
 	const std::string inputDir = argv[1];
 	const std::string outputCsv = argv[2];
-	const std::string profilePath = (argc >= 4) ? argv[3] : std::string();
+
+	// 위치 인자(프로파일) + 옵션(--threads N) 파싱
+	std::string profilePath;
+	int numThreads = 0; // 0 = 자동
+	for (int i = 3; i < argc; ++i)
+	{
+		std::string a = argv[i];
+		if (a == "--threads")
+		{
+			if (i + 1 < argc)
+				numThreads = std::atoi(argv[++i]);
+		}
+		else if (a.rfind("--threads=", 0) == 0)
+		{
+			numThreads = std::atoi(a.substr(10).c_str());
+		}
+		else if (profilePath.empty())
+		{
+			profilePath = a; // 첫 비옵션 = 프로파일 경로
+		}
+	}
 
 	// 프로파일(옵션)
 	ProfileLoader profile;
@@ -44,11 +66,13 @@ int main(int argc, char** argv)
 		}
 	}
 
+	std::cout << "threads: " << (numThreads > 0 ? std::to_string(numThreads) : std::string("auto")) << std::endl;
+
 	BatchStat stat;
 	bool ok = false;
 	try
 	{
-		ok = CsvExporter::ExportFolder(inputDir, outputCsv, profilePtr, stat);
+		ok = CsvExporter::ExportFolder(inputDir, outputCsv, profilePtr, stat, numThreads);
 	}
 	catch (const std::exception& e)
 	{
@@ -67,6 +91,7 @@ int main(int argc, char** argv)
 	std::cout << "SUMMARY" << std::endl;
 	std::cout << "  processed files : " << stat.m_processedFiles << " / " << stat.m_totalFiles << std::endl;
 	std::cout << "  total regions   : " << stat.m_totalRegions << std::endl;
+	std::cout << "  elapsed (ms)    : " << stat.m_elapsedMs << std::endl;
 	std::cout << "  output csv      : " << outputCsv << std::endl;
 	std::cout << "  failed files    : " << stat.m_failedFiles.size() << std::endl;
 	for (size_t i = 0; i < stat.m_failedFiles.size(); ++i)
