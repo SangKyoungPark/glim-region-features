@@ -335,11 +335,35 @@ void CGlimRegionViewerDlg::DrawImageView(CDC* pDC)
 
 cv::Mat CGlimRegionViewerDlg::BuildOverlayMat()
 {
-	// 표시용 BGR 생성(오버레이 컨투어는 후속 커밋에서 추가)
 	if (m_binImage.empty())
 		return cv::Mat();
+
 	cv::Mat bgr;
 	cv::cvtColor(m_binImage, bgr, cv::COLOR_GRAY2BGR);
+
+	if (!m_showOverlay)
+		return bgr;
+
+	// Region 외곽/구멍 컨투어 오버레이. 컨투어는 전체 이미지 좌표(OpenCV x=col,y=row).
+	try
+	{
+		// 1) 일반 Region: 초록
+		for (size_t i = 0; i < m_regions.size(); ++i)
+		{
+			if (static_cast<int>(i) == m_highlightRegion)
+				continue;
+			cv::drawContours(bgr, m_regions[i].AllContours(), -1, cv::Scalar(0, 200, 0), 1);
+		}
+		// 2) 강조 Region: 빨강(두껍게, 맨 위)
+		if (m_highlightRegion >= 0 && m_highlightRegion < static_cast<int>(m_regions.size()))
+		{
+			cv::drawContours(bgr, m_regions[m_highlightRegion].AllContours(), -1,
+				cv::Scalar(0, 0, 255), 2);
+		}
+	}
+	catch (...)
+	{
+	}
 	return bgr;
 }
 
@@ -567,7 +591,8 @@ void CGlimRegionViewerDlg::OnBnClickedExportCsv()
 
 void CGlimRegionViewerDlg::OnBnClickedOverlay()
 {
-	// [feat: 오버레이] 구현 예정
+	m_showOverlay = (IsDlgButtonChecked(IDC_CHECK_OVERLAY) == BST_CHECKED);
+	InvalidateRect(m_imgFrameRect);
 }
 
 void CGlimRegionViewerDlg::OnZoomChanged()
@@ -598,7 +623,13 @@ void CGlimRegionViewerDlg::OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult
 
 void CGlimRegionViewerDlg::OnFeatureListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)
 {
-	(void)pNMHDR;
+	LPNMLISTVIEW pnmv = reinterpret_cast<LPNMLISTVIEW>(pNMHDR);
 	*pResult = 0;
-	// [feat: 오버레이] 구현 예정
+
+	// 특징값 행(=Region 인덱스) 선택 → 해당 Region 강조
+	if ((pnmv->uNewState & LVIS_SELECTED) && !(pnmv->uOldState & LVIS_SELECTED))
+	{
+		m_highlightRegion = pnmv->iItem;
+		InvalidateRect(m_imgFrameRect);
+	}
 }
