@@ -196,12 +196,13 @@ void CGlimRegionViewerDlg::SetupControls()
 		CRect(kFeatX, kContentY, kFeatX + kFeatW, kContentY + kContentH), this, IDC_LIST_FEATURES);
 	m_listFeatures.SetFont(pFont);
 	m_listFeatures.SetExtendedStyle(m_listFeatures.GetExtendedStyle() | LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
-	m_listFeatures.InsertColumn(0, _T("Idx"), LVCFMT_RIGHT, 36);
-	m_listFeatures.InsertColumn(1, _T("Area"), LVCFMT_RIGHT, 56);
-	m_listFeatures.InsertColumn(2, _T("Circ"), LVCFMT_RIGHT, 48);
-	m_listFeatures.InsertColumn(3, _T("Conv"), LVCFMT_RIGHT, 48);
-	m_listFeatures.InsertColumn(4, _T("Round"), LVCFMT_RIGHT, 52);
-	m_listFeatures.InsertColumn(5, _T("Code"), LVCFMT_LEFT, 88);
+	m_listFeatures.InsertColumn(0, _T("Idx"), LVCFMT_RIGHT, 34);
+	m_listFeatures.InsertColumn(1, _T("Area"), LVCFMT_RIGHT, 52);
+	m_listFeatures.InsertColumn(2, _T("Circ"), LVCFMT_RIGHT, 46);
+	m_listFeatures.InsertColumn(3, _T("Conv"), LVCFMT_RIGHT, 46);
+	m_listFeatures.InsertColumn(4, _T("Round"), LVCFMT_RIGHT, 48);
+	m_listFeatures.InsertColumn(5, _T("Aniso"), LVCFMT_RIGHT, 48);
+	m_listFeatures.InsertColumn(6, _T("Code"), LVCFMT_LEFT, 60);
 
 	// 상태 라벨 위치 조정
 	CWnd* status = GetDlgItem(IDC_STATIC_STATUS);
@@ -534,12 +535,48 @@ void CGlimRegionViewerDlg::AnalyzeCurrent()
 
 void CGlimRegionViewerDlg::UpdateFeatureList()
 {
-	// [feat: 특징값 패널] 구현 예정
+	m_listFeatures.DeleteAllItems();
+
+	for (size_t i = 0; i < m_features.size(); ++i)
+	{
+		const Grf::FeatureVector& fv = m_features[i];
+		CString s;
+		s.Format(_T("%d"), static_cast<int>(i));
+		int row = m_listFeatures.InsertItem(static_cast<int>(i), s);
+		if (row < 0)
+			continue;
+
+		s.Format(_T("%.0f"), fv.area);        m_listFeatures.SetItemText(row, 1, s);
+		s.Format(_T("%.3f"), fv.circularity); m_listFeatures.SetItemText(row, 2, s);
+		s.Format(_T("%.3f"), fv.convexity);   m_listFeatures.SetItemText(row, 3, s);
+		s.Format(_T("%.3f"), fv.roundness);   m_listFeatures.SetItemText(row, 4, s);
+		s.Format(_T("%.2f"), fv.anisometry);  m_listFeatures.SetItemText(row, 5, s);
+
+		CString code;
+		if (m_profileLoaded)
+		{
+			try { code = ToCStr(m_profile.RuleEngine().Classify(fv, "OK")); }
+			catch (...) { code = _T(""); }
+		}
+		m_listFeatures.SetItemText(row, 6, code);
+	}
 }
 
 void CGlimRegionViewerDlg::LoadProfileSelection()
 {
-	// [feat: 프로파일 연동] 구현 예정
+	m_profileLoaded = false;
+	CString path = CurrentProfilePath();
+	if (path.IsEmpty())
+		return;
+	try
+	{
+		if (m_profile.Load(ToStd(path)))
+			m_profileLoaded = true;
+	}
+	catch (...)
+	{
+		m_profileLoaded = false;
+	}
 }
 
 // ------------------------------------------------------------------
@@ -606,7 +643,19 @@ void CGlimRegionViewerDlg::OnZoomChanged()
 
 void CGlimRegionViewerDlg::OnProfileChanged()
 {
-	// [feat: 프로파일 연동] 구현 예정
+	LoadProfileSelection();
+	UpdateFeatureList();
+
+	CString msg;
+	if (m_profileLoaded)
+		msg.Format(_T("Profile loaded: %s (rules=%d)"),
+			ToCStr(m_profile.ProfileName()),
+			static_cast<int>(m_profile.RuleEngine().RuleCount()));
+	else
+		msg = _T("Profile: (none)");
+	SetStatus(msg);
+
+	InvalidateRect(m_imgFrameRect);
 }
 
 void CGlimRegionViewerDlg::OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)
