@@ -623,7 +623,53 @@ void CGlimRegionViewerDlg::OnBnClickedOpenFolder()
 
 void CGlimRegionViewerDlg::OnBnClickedExportCsv()
 {
-	// [feat: CSV 내보내기] 구현 예정
+	if (m_files.empty())
+	{
+		AfxMessageBox(_T("먼저 이미지 또는 폴더를 여세요."));
+		return;
+	}
+
+	// 현재 폴더(= 현재 파일이 속한 디렉터리) 전체를 배치 처리
+	std::string first = m_files[0];
+	size_t sl = first.find_last_of("\\/");
+	std::string dir = (sl != std::string::npos) ? first.substr(0, sl) : std::string(".");
+
+	CFileDialog dlg(FALSE, _T("csv"), _T("regions.csv"),
+		OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY,
+		_T("CSV Files|*.csv|All Files|*.*||"), this);
+	if (dlg.DoModal() != IDOK)
+		return;
+
+	const CString outPath = dlg.GetPathName();
+
+	// GlimRegionBatch 와 동일 포맷(CsvExporter 공용). 프로파일 로드 시 Score/분류 포함.
+	const Grf::ProfileLoader* pp = m_profileLoaded ? &m_profile : NULL;
+	Grf::BatchStat stat;
+	bool ok = false;
+	try
+	{
+		ok = Grf::CsvExporter::ExportFolder(dir, ToStd(outPath), pp, stat);
+	}
+	catch (...)
+	{
+		ok = false;
+	}
+
+	if (!ok)
+	{
+		SetStatus(_T("CSV 내보내기 실패(폴더/경로 확인)."));
+		AfxMessageBox(_T("CSV 내보내기에 실패했습니다. 폴더/출력 경로를 확인하세요."));
+		return;
+	}
+
+	CString msg;
+	msg.Format(_T("CSV saved: %d/%d files, %I64d regions, %d failed"),
+		static_cast<int>(stat.m_processedFiles),
+		static_cast<int>(stat.m_totalFiles),
+		static_cast<__int64>(stat.m_totalRegions),
+		static_cast<int>(stat.m_failedFiles.size()));
+	SetStatus(msg + _T("  -> ") + outPath);
+	AfxMessageBox(msg);
 }
 
 void CGlimRegionViewerDlg::OnBnClickedOverlay()

@@ -7,6 +7,7 @@
 #include <vector>
 #include <string>
 #include <opencv2/core.hpp>
+#include "resource.h"
 #include "GlimRegionFeatures.h"
 
 class CGlimRegionViewerDlg : public CDialogEx
