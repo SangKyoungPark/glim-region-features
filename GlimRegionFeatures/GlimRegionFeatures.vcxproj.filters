@@ -33,6 +33,9 @@
     <ClInclude Include="src\Adapter\RegionExtractor.h">
       <Filter>Adapter</Filter>
     </ClInclude>
+    <ClInclude Include="src\Adapter\CsvExporter.h">
+      <Filter>Adapter</Filter>
+    </ClInclude>
     <ClInclude Include="src\UseCase\FeatureCalculator.h">
       <Filter>UseCase</Filter>
     </ClInclude>
@@ -57,6 +60,9 @@
       <Filter>Domain</Filter>
     </ClCompile>
     <ClCompile Include="src\Adapter\RegionExtractor.cpp">
+      <Filter>Adapter</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Adapter\CsvExporter.cpp">
       <Filter>Adapter</Filter>
     </ClCompile>
     <ClCompile Include="src\UseCase\FeatureCalculator.cpp">

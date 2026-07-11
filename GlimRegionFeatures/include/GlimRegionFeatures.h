@@ -28,6 +28,7 @@
 #include "Domain/FeatureVector.h"
 #include "Domain/ScoreResult.h"
 #include "Adapter/RegionExtractor.h"
+#include "Adapter/CsvExporter.h"
 #include "UseCase/FeatureCalculator.h"
 #include "UseCase/ScoreNormalizer.h"
 #include "UseCase/SelectShapeRule.h"
