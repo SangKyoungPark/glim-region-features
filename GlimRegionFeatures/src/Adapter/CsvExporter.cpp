@@ -74,7 +74,8 @@ std::vector<std::string> CsvExporter::ScoreFeatureNames(const ProfileLoader* pro
 
 std::string CsvExporter::BuildHeader(const ProfileLoader* profile)
 {
-	std::string header = "FileName,RegionIndex," + FeatureVector::CsvHeader();
+	// FileName 뒤에 FilePath 삽입(기존 사용자 인지 순서 유지)
+	std::string header = "FileName,FilePath,RegionIndex," + FeatureVector::CsvHeader();
 	if (profile != NULL && profile->IsLoaded())
 	{
 		std::vector<std::string> names = ScoreFeatureNames(profile);
@@ -85,11 +86,12 @@ std::string CsvExporter::BuildHeader(const ProfileLoader* profile)
 	return header;
 }
 
-std::string CsvExporter::BuildRegionRow(const std::string& fileName, int regionIndex,
-	const FeatureVector& fv, const ProfileLoader* profile)
+std::string CsvExporter::BuildRegionRow(const std::string& fileName, const std::string& filePath,
+	int regionIndex, const FeatureVector& fv, const ProfileLoader* profile)
 {
 	std::ostringstream oss;
-	oss << CsvQuote(fileName) << "," << regionIndex << "," << fv.ToCsvRow();
+	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ","
+		<< regionIndex << "," << fv.ToCsvRow();
 
 	if (profile != NULL && profile->IsLoaded())
 	{
@@ -103,13 +105,14 @@ std::string CsvExporter::BuildRegionRow(const std::string& fileName, int regionI
 	return oss.str();
 }
 
-std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const ProfileLoader* profile)
+std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const std::string& filePath,
+	const ProfileLoader* profile)
 {
 	const int featCols = FeatureColumnCount();
 	const std::string emptyFeat(featCols > 0 ? (featCols - 1) : 0, ',');
 
 	std::ostringstream oss;
-	oss << CsvQuote(fileName) << ",-1," << emptyFeat;
+	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ",-1," << emptyFeat;
 
 	if (profile != NULL && profile->IsLoaded())
 	{
@@ -189,7 +192,10 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 
 			const std::string& path = files[i];
 			std::string fileName = path;
+			std::string filePath = path; // 절대경로(스캔 시 조합된 풀패스, 실패해도 원본 유지)
 			try { fileName = fs::path(path).filename().string(); }
+			catch (...) {}
+			try { filePath = fs::absolute(fs::path(path)).string(); }
 			catch (...) {}
 
 			try
@@ -215,7 +221,7 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 				std::string block;
 				if (regions.empty())
 				{
-					block = BuildEmptyRow(fileName, profile);
+					block = BuildEmptyRow(fileName, filePath, profile);
 					block += "\r\n";
 				}
 				else
@@ -223,7 +229,7 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 					for (size_t r = 0; r < regions.size(); ++r)
 					{
 						FeatureVector fv = calc.Compute(regions[r]);
-						block += BuildRegionRow(fileName, static_cast<int>(r), fv, profile);
+						block += BuildRegionRow(fileName, filePath, static_cast<int>(r), fv, profile);
 						block += "\r\n";
 					}
 					totalRegions.fetch_add(static_cast<long long>(regions.size()));

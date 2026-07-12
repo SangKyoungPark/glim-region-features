@@ -33,14 +33,16 @@ public:
 	static bool IsSupportedImage(const std::string& ext);
 
 	// CSV 헤더 라인(개행 없음). profile 이 null 이면 특징값 컬럼까지만.
+	// 컬럼 순서: FileName, FilePath, RegionIndex, <FeatureVector>, [score_*, ClassifiedCode]
 	static std::string BuildHeader(const ProfileLoader* profile);
 
-	// Region 1개 → CSV 행(개행 없음).
-	static std::string BuildRegionRow(const std::string& fileName, int regionIndex,
-		const FeatureVector& fv, const ProfileLoader* profile);
+	// Region 1개 → CSV 행(개행 없음). filePath = 이미지 절대경로.
+	static std::string BuildRegionRow(const std::string& fileName, const std::string& filePath,
+		int regionIndex, const FeatureVector& fv, const ProfileLoader* profile);
 
-	// Region 없는 이미지 행(RegionIndex=-1).
-	static std::string BuildEmptyRow(const std::string& fileName, const ProfileLoader* profile);
+	// Region 없는 이미지 행(RegionIndex=-1). filePath = 이미지 절대경로.
+	static std::string BuildEmptyRow(const std::string& fileName, const std::string& filePath,
+		const ProfileLoader* profile);
 
 	// 폴더 전체를 CSV 파일로 저장(파일 단위 멀티쓰레드).
 	//  - profile 이 null 이면 특징값만.
