@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<!-- VS18 툴셋 결손 우회: 14.44 컴파일러에 14.40의 MFC 헤더/라이브러리를 주입 -->
+	<PropertyGroup>
+		<MfcRoot>C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\MSVC\14.40.33807\atlmfc</MfcRoot>
+		<IncludePath>$(MfcRoot)\include;$(IncludePath)</IncludePath>
+		<LibraryPath>$(MfcRoot)\lib\x64;$(LibraryPath)</LibraryPath>
+	</PropertyGroup>
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<PreprocessorDefinitions>_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+		<ResourceCompile>
+			<AdditionalIncludeDirectories>$(MfcRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+			<PreprocessorDefinitions>_AFXDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ResourceCompile>
+	</ItemDefinitionGroup>
+</Project>
