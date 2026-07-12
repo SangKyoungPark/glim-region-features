@@ -24,18 +24,49 @@ public:
 	virtual cv::Mat Binarize(const cv::Mat& src) const = 0;
 };
 
-// 기본 CPU 구현: (필요 시 그레이 변환) → threshold(thr, 255, BINARY).
+// 이진화 모드
+enum BinarizeMode {
+	BINMODE_FIXED = 0,      // 고정 임계값(m_threshold)
+	BINMODE_OTSU = 1,       // Otsu 자동 임계값
+	BINMODE_MEAN_OFFSET = 2 // 배경 평균 기반: thresh = mean ± offset
+};
+
+// 극성: Region 으로 잡을 밝기 방향
+enum BinarizePolarity {
+	POLARITY_BRIGHT = 0, // 밝은 쪽 = Region (THRESH_BINARY, 기존 동작)
+	POLARITY_DARK = 1    // 어두운 쪽 = Region (THRESH_BINARY_INV, 흑점 등)
+};
+
+struct BinarizeParams {
+	BinarizeMode m_mode;
+	BinarizePolarity m_polarity;
+	double m_threshold; // FIXED 용
+	double m_offset;    // MEAN_OFFSET 용 (DARK: mean-offset 미만이 Region, BRIGHT: mean+offset 초과가 Region)
+
+	// 기본값 = 기존 동작(FIXED 127, BRIGHT) 100% 동일
+	BinarizeParams()
+		: m_mode(BINMODE_FIXED), m_polarity(POLARITY_BRIGHT)
+		, m_threshold(127.0), m_offset(20.0) {}
+};
+
+// 기본 CPU 구현: (필요 시 그레이 변환) → 모드/극성에 따른 threshold.
 class CpuPreprocessor : public IPreprocessor {
 public:
-	explicit CpuPreprocessor(double thresholdValue = 127.0)
-		: m_threshold(thresholdValue) {}
+	CpuPreprocessor() : m_params() {}
+	explicit CpuPreprocessor(const BinarizeParams& params) : m_params(params) {}
+	// 레거시 호환: 고정 임계값(FIXED/BRIGHT)
+	explicit CpuPreprocessor(double thresholdValue) : m_params()
+	{
+		m_params.m_threshold = thresholdValue;
+	}
 
 	virtual cv::Mat Binarize(const cv::Mat& src) const;
 
-	double Threshold() const { return m_threshold; }
+	const BinarizeParams& Params() const { return m_params; }
+	double Threshold() const { return m_params.m_threshold; }
 
 private:
-	double m_threshold; // 로드 후 불변(설정값). 계산 중 변경 금지.
+	BinarizeParams m_params; // 로드 후 불변(설정값). 계산 중 변경 금지.
 };
 
 } // namespace Grf
