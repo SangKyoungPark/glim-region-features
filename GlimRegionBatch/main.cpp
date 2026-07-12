@@ -19,27 +19,64 @@ int main(int argc, char** argv)
 
 	if (argc < 3)
 	{
-		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini] [--threads N]" << std::endl;
+		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]"
+			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--offset N]" << std::endl;
+		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
 	}
 
 	const std::string inputDir = argv[1];
 	const std::string outputCsv = argv[2];
 
-	// 위치 인자(프로파일) + 옵션(--threads N) 파싱
+	// 위치 인자(프로파일) + 옵션 파싱
+	//  --threads N | --dark | --bright | --otsu | --thresh N|auto | --offset N
 	std::string profilePath;
-	int numThreads = 0; // 0 = 자동
+	int numThreads = 0;         // 0 = 자동
+	BinarizeParams binParams;   // 기본 FIXED 127 BRIGHT(기존 동작)
+
 	for (int i = 3; i < argc; ++i)
 	{
 		std::string a = argv[i];
 		if (a == "--threads")
 		{
-			if (i + 1 < argc)
-				numThreads = std::atoi(argv[++i]);
+			if (i + 1 < argc) numThreads = std::atoi(argv[++i]);
 		}
 		else if (a.rfind("--threads=", 0) == 0)
 		{
 			numThreads = std::atoi(a.substr(10).c_str());
+		}
+		else if (a == "--dark")
+		{
+			binParams.m_polarity = POLARITY_DARK;
+		}
+		else if (a == "--bright")
+		{
+			binParams.m_polarity = POLARITY_BRIGHT;
+		}
+		else if (a == "--otsu")
+		{
+			binParams.m_mode = BINMODE_OTSU;
+		}
+		else if (a == "--thresh" || a.rfind("--thresh=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--thresh=", 0) == 0) v = a.substr(9);
+			else if (i + 1 < argc) v = argv[++i];
+
+			if (v == "auto")
+				binParams.m_mode = BINMODE_MEAN_OFFSET;
+			else
+			{
+				binParams.m_mode = BINMODE_FIXED;
+				binParams.m_threshold = std::atof(v.c_str());
+			}
+		}
+		else if (a == "--offset" || a.rfind("--offset=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--offset=", 0) == 0) v = a.substr(9);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_offset = std::atof(v.c_str());
 		}
 		else if (profilePath.empty())
 		{
@@ -68,11 +105,20 @@ int main(int argc, char** argv)
 
 	std::cout << "threads: " << (numThreads > 0 ? std::to_string(numThreads) : std::string("auto")) << std::endl;
 
+	const char* modeStr = (binParams.m_mode == BINMODE_OTSU) ? "otsu"
+		: (binParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset" : "fixed";
+	const char* polStr = (binParams.m_polarity == POLARITY_DARK) ? "dark" : "bright";
+	std::cout << "binarize: mode=" << modeStr << " polarity=" << polStr
+		<< " threshold=" << binParams.m_threshold
+		<< " offset=" << binParams.m_offset << std::endl;
+
+	CpuPreprocessor preprocessor(binParams);
+
 	BatchStat stat;
 	bool ok = false;
 	try
 	{
-		ok = CsvExporter::ExportFolder(inputDir, outputCsv, profilePtr, stat, numThreads);
+		ok = CsvExporter::ExportFolder(inputDir, outputCsv, profilePtr, stat, numThreads, &preprocessor);
 	}
 	catch (const std::exception& e)
 	{
