@@ -85,6 +85,7 @@ BEGIN_MESSAGE_MAP(CGlimRegionViewerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_CHECK_OVERLAY, &CGlimRegionViewerDlg::OnBnClickedOverlay)
 	ON_CBN_SELCHANGE(IDC_COMBO_ZOOM, &CGlimRegionViewerDlg::OnZoomChanged)
 	ON_CBN_SELCHANGE(IDC_COMBO_PROFILE, &CGlimRegionViewerDlg::OnProfileChanged)
+	ON_CBN_SELCHANGE(IDC_COMBO_BINARIZE, &CGlimRegionViewerDlg::OnBinarizeChanged)
 	ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST_FILES, &CGlimRegionViewerDlg::OnFileListItemChanged)
 	ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST_FEATURES, &CGlimRegionViewerDlg::OnFeatureListItemChanged)
 END_MESSAGE_MAP()
@@ -182,6 +183,23 @@ void CGlimRegionViewerDlg::SetupControls()
 		b->Create(_T("Export CSV"), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
 			CRect(700, kTopY, 700 + 120, kTopY + kTopH), this, IDC_BTN_EXPORT_CSV);
 		b->SetFont(pFont);
+	}
+
+	// Binarize 라벨 + 콤보 (전처리 이진화 모드/극성)
+	{
+		CStatic* lbl = new CStatic();
+		lbl->Create(_T("Binarize"), WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+			CRect(830, kTopY, 888, kTopY + kTopH), this, IDC_STATIC_BINARIZE_LABEL);
+		lbl->SetFont(pFont);
+
+		m_comboBinarize.Create(WS_CHILD | WS_VISIBLE | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+			CRect(890, kTopY, 890 + 170, kTopY + 200), this, IDC_COMBO_BINARIZE);
+		m_comboBinarize.SetFont(pFont);
+		// 인덱스: 0=Bright(127) 1=Dark(127) 2=Dark auto 3=Bright auto
+		const LPCTSTR modes[] = { _T("Bright(127)"), _T("Dark(127)"), _T("Dark auto"), _T("Bright auto") };
+		for (int i = 0; i < 4; ++i)
+			m_comboBinarize.AddString(modes[i]);
+		m_comboBinarize.SetCurSel(0); // 기본 Bright 127 (기존 동작)
 	}
 
 	// --- 좌측 파일 리스트 ---
@@ -481,8 +499,19 @@ void CGlimRegionViewerDlg::LoadImageAt(int index)
 			return;
 		}
 
-		// 완전 이진이 아닐 수 있으므로 0/255 정규화
-		cv::threshold(gray, m_binImage, 127.0, 255.0, cv::THRESH_BINARY);
+		// 선택한 이진화 모드/극성으로 전처리(원본 그레이 → 0/255)
+		Grf::CpuPreprocessor pre(CurrentBinarizeParams());
+		m_binImage = pre.Binarize(gray);
+		if (m_binImage.empty())
+		{
+			m_regions.clear();
+			m_features.clear();
+			m_highlightRegion = -1;
+			SetStatus(_T("이진화 실패: ") + ToCStr(m_files[index]));
+			UpdateFeatureList();
+			InvalidateRect(m_imgFrameRect);
+			return;
+		}
 
 		AnalyzeCurrent();
 		UpdateFeatureList();
@@ -644,11 +673,14 @@ void CGlimRegionViewerDlg::OnBnClickedExportCsv()
 
 	// GlimRegionBatch 와 동일 포맷(CsvExporter 공용). 프로파일 로드 시 Score/분류 포함.
 	const Grf::ProfileLoader* pp = m_profileLoaded ? &m_profile : NULL;
+	// 화면과 동일한 이진화 설정을 CSV 배치에도 적용
+	Grf::CpuPreprocessor pre(CurrentBinarizeParams());
+
 	Grf::BatchStat stat;
 	bool ok = false;
 	try
 	{
-		ok = Grf::CsvExporter::ExportFolder(dir, ToStd(outPath), pp, stat);
+		ok = Grf::CsvExporter::ExportFolder(dir, ToStd(outPath), pp, stat, 0, &pre);
 	}
 	catch (...)
 	{
@@ -702,6 +734,44 @@ void CGlimRegionViewerDlg::OnProfileChanged()
 	SetStatus(msg);
 
 	InvalidateRect(m_imgFrameRect);
+}
+
+Grf::BinarizeParams CGlimRegionViewerDlg::CurrentBinarizeParams() const
+{
+	// 콤보 인덱스: 0=Bright(127) 1=Dark(127) 2=Dark auto 3=Bright auto
+	Grf::BinarizeParams p; // 기본 FIXED 127 BRIGHT
+	const int sel = m_comboBinarize.GetCurSel();
+	switch (sel)
+	{
+	case 1: // Dark 고정 127
+		p.m_mode = Grf::BINMODE_FIXED;
+		p.m_polarity = Grf::POLARITY_DARK;
+		p.m_threshold = 127.0;
+		break;
+	case 2: // Dark auto (배경평균-오프셋)
+		p.m_mode = Grf::BINMODE_MEAN_OFFSET;
+		p.m_polarity = Grf::POLARITY_DARK;
+		p.m_offset = 20.0;
+		break;
+	case 3: // Bright auto (배경평균+오프셋)
+		p.m_mode = Grf::BINMODE_MEAN_OFFSET;
+		p.m_polarity = Grf::POLARITY_BRIGHT;
+		p.m_offset = 20.0;
+		break;
+	case 0:
+	default: // Bright 고정 127 (기존 동작)
+		break;
+	}
+	return p;
+}
+
+void CGlimRegionViewerDlg::OnBinarizeChanged()
+{
+	// 현재 이미지를 새 이진화 설정으로 재처리·재표시
+	if (m_curIndex >= 0 && m_curIndex < static_cast<int>(m_files.size()))
+		LoadImageAt(m_curIndex);
+	else
+		InvalidateRect(m_imgFrameRect);
 }
 
 void CGlimRegionViewerDlg::OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)

@@ -28,6 +28,7 @@ protected:
 	afx_msg void OnBnClickedOverlay();
 	afx_msg void OnZoomChanged();
 	afx_msg void OnProfileChanged();
+	afx_msg void OnBinarizeChanged();
 	afx_msg void OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnFeatureListItemChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	DECLARE_MESSAGE_MAP()
@@ -52,10 +53,14 @@ private:
 	static bool DrawMatToDC(CDC* pDC, const cv::Mat& bgr, const CRect& dest); // Mat→DIB StretchDIBits
 
 	// --- 상태 ---
+	// 현재 콤보 선택으로부터 이진화 파라미터 산출
+	Grf::BinarizeParams CurrentBinarizeParams() const;
+
 	CListCtrl m_listFiles;
 	CListCtrl m_listFeatures;
 	CComboBox m_comboZoom;
 	CComboBox m_comboProfile;
+	CComboBox m_comboBinarize;
 
 	std::vector<std::string> m_files;   // 폴더 내 이미지 전체 경로
 	int m_curIndex;                     // 현재 선택 인덱스(-1 없음)
