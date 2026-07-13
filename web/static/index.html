@@ -9,70 +9,152 @@
 <body>
 <header class="topbar">
   <h1>GlimRegion 분석 대시보드</h1>
-  <div class="runbar">
-    <label>폴더 경로
-      <input id="folderPath" type="text" placeholder="예: D:/128Crop/BlackPoint" spellcheck="false">
-    </label>
-    <label>프로파일
-      <select id="profile">
-        <option value="coater">코터</option>
-        <option value="rollpress">롤프레스</option>
-        <option value="slitter">슬리터</option>
-        <option value="none">없음</option>
-      </select>
-    </label>
-    <label>이진화
-      <select id="binarize">
-        <option value="bright127">Bright(127)</option>
-        <option value="dark127">Dark(127)</option>
-        <option value="darkauto" selected>Dark auto</option>
-        <option value="brightauto">Bright auto</option>
-      </select>
-    </label>
-    <label>스레드
-      <input id="threads" type="number" min="0" value="0" title="0=자동">
-    </label>
-    <button id="runBtn">분석 실행</button>
-    <span id="runStatus" class="status"></span>
-  </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab-btn active" data-tab="home">홈</button>
+    <button class="tab-btn" data-tab="settings">설정</button>
+    <button class="tab-btn" data-tab="results">결과</button>
+    <button class="tab-btn" data-tab="analysis">분석</button>
+  </nav>
+  <span id="runStatus" class="status"></span>
 </header>
 
 <main>
-  <!-- 요약 카드 -->
-  <section id="summary" class="summary-row"></section>
-
-  <!-- 차트 2종 -->
-  <section class="charts-row">
-    <div class="chart-card">
-      <h2>불량 분포 <small>(분류코드별 Region 수)</small></h2>
-      <div id="distChart" class="chart"></div>
+  <!-- ===================== 홈 탭 ===================== -->
+  <section id="tab-home" class="tab-page active">
+    <div class="intro-card">
+      <h2>GlimRegion — Halcon Region Features 재현 로컬 대시보드</h2>
+      <p class="intro-desc">
+        폴더 단위로 이미지를 검사하여 Halcon 13 Region Features(면적/원형도/진원도/이방성 등)를
+        OpenCV 로 재현·산출하고, 프로파일 기반 Score/분류 결과를 시각화합니다.
+        계산은 C++ 엔진(GlimRegionBatch.exe)이 수행하며, 웹은 결과 표시 전용입니다.
+      </p>
+      <ol class="intro-steps">
+        <li><b>설정</b> 탭에서 폴더 경로·프로파일·이진화 방식을 정하고 미리보기로 확인</li>
+        <li><b>분석 실행</b> 시 <b>결과</b> 탭에서 카드 갤러리로 Region 별 특징/오버레이 확인</li>
+        <li><b>분석</b> 탭에서 불량 분포·Score·특징값 히스토그램 확인</li>
+      </ol>
     </div>
-    <div class="chart-card">
-      <h2>Score 분석 <small>(분류코드별 score 평균)</small></h2>
-      <div id="scoreChart" class="chart"></div>
-    </div>
-  </section>
 
-  <!-- 갤러리 컨트롤 -->
-  <section class="gallery-controls">
-    <div class="filters" id="codeFilters"></div>
-    <div class="sortbox">
-      정렬:
-      <select id="sortKey">
-        <option value="regionIndex">순서(기본)</option>
-        <option value="area">area</option>
-        <option value="circularity">circularity</option>
-        <option value="roundness">roundness</option>
-        <option value="anisometry">anisometry</option>
-        <option value="convexity">convexity</option>
-        <option value="diameter">diameter</option>
-      </select>
-      <button id="sortDir" data-dir="desc" title="정렬 방향">▼</button>
+    <div class="recent-card">
+      <div class="recent-head">
+        <h2>최근 실행 기록</h2>
+        <button id="clearRecent" class="ghost-btn">기록 지우기</button>
+      </div>
+      <div id="recentList" class="recent-list"></div>
     </div>
   </section>
 
-  <!-- 갤러리 카드 리스트 -->
-  <section id="gallery" class="gallery"></section>
+  <!-- ===================== 설정 탭 ===================== -->
+  <section id="tab-settings" class="tab-page">
+    <div class="settings-grid">
+      <div class="set-card">
+        <h2>실행 설정</h2>
+        <div class="field">
+          <label for="folderPath">폴더 경로</label>
+          <input id="folderPath" type="text" placeholder="예: D:/128Crop/BlackPoint" spellcheck="false">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="profile">프로파일</label>
+            <select id="profile">
+              <option value="coater">코터</option>
+              <option value="rollpress">롤프레스</option>
+              <option value="slitter">슬리터</option>
+              <option value="none">없음</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="threads">스레드 (0=자동)</label>
+            <input id="threads" type="number" min="0" value="0">
+          </div>
+        </div>
+
+        <h2 style="margin-top:18px">이진화</h2>
+        <div class="field-row">
+          <div class="field">
+            <label for="polarity">극성</label>
+            <select id="polarity">
+              <option value="bright">Bright (밝은 쪽=Region)</option>
+              <option value="dark" selected>Dark (어두운 쪽=Region)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="mode">방식</label>
+            <select id="mode">
+              <option value="fixed">고정 임계값</option>
+              <option value="auto" selected>자동 (배경평균±offset)</option>
+              <option value="binary">Binary (이미 이진화됨)</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field" id="threshField">
+            <label for="thresh">임계값 TH (0~255)</label>
+            <input id="thresh" type="number" min="0" max="255" value="127">
+          </div>
+          <div class="field" id="offsetField">
+            <label for="offset">자동 offset</label>
+            <input id="offset" type="number" value="20">
+          </div>
+        </div>
+
+        <div class="run-actions">
+          <button id="runBtn">분석 실행</button>
+          <span class="hint">실행 후 자동으로 결과 탭으로 이동합니다.</span>
+        </div>
+      </div>
+
+      <div class="set-card">
+        <div class="preview-head">
+          <h2>이진화 미리보기</h2>
+          <button id="previewBtn" class="ghost-btn">미리보기 불러오기</button>
+        </div>
+        <p class="hint">폴더 앞쪽 이미지 몇 장 중 1장을 골라 원본 | 이진화 결과를 비교합니다. 방식/TH/offset 변경 시 즉시 갱신됩니다.</p>
+        <div id="previewFiles" class="preview-files"></div>
+        <div id="previewPane" class="preview-pane">
+          <div class="empty">미리보기를 불러오세요.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 결과 탭 ===================== -->
+  <section id="tab-results" class="tab-page">
+    <section id="summary" class="summary-row"></section>
+    <section class="gallery-controls">
+      <div class="filters" id="codeFilters"></div>
+      <div class="sortbox">
+        정렬:
+        <select id="sortKey">
+          <option value="regionIndex">순서(기본)</option>
+          <option value="area">area</option>
+          <option value="circularity">circularity</option>
+          <option value="roundness">roundness</option>
+          <option value="anisometry">anisometry</option>
+          <option value="convexity">convexity</option>
+          <option value="diameter">diameter</option>
+        </select>
+        <button id="sortDir" data-dir="desc" title="정렬 방향">▼</button>
+      </div>
+    </section>
+    <section id="gallery" class="gallery"></section>
+    <div id="resultsEmpty" class="empty big">아직 실행 결과가 없습니다. 설정 탭에서 분석을 실행하세요.</div>
+  </section>
+
+  <!-- ===================== 분석 탭 ===================== -->
+  <section id="tab-analysis" class="tab-page">
+    <div class="charts-row">
+      <div class="chart-card">
+        <h2>불량 분포 <small>(분류코드별 Region 수)</small></h2>
+        <div id="distChart" class="chart"></div>
+      </div>
+      <div class="chart-card">
+        <h2>Score 분석 <small>(분류코드별 score 평균)</small></h2>
+        <div id="scoreChart" class="chart"></div>
+      </div>
+    </div>
+    <div id="analysisEmpty" class="empty big">아직 실행 결과가 없습니다. 설정 탭에서 분석을 실행하세요.</div>
+  </section>
 </main>
 
 <!-- 상세 패널(모달) -->
