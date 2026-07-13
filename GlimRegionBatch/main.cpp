@@ -9,6 +9,8 @@
 #include <string>
 #include <cstdlib>
 
+#include <opencv2/imgcodecs.hpp>   // --preview: imread/imwrite
+
 #include "GlimRegionFeatures.h"
 
 using namespace Grf;
@@ -21,7 +23,7 @@ int main(int argc, char** argv)
 	{
 		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]"
 			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--binary] [--offset N]"
-			<< " [--overlay <dir>]" << std::endl;
+			<< " [--overlay <dir>] [--preview <file> <out.png>]" << std::endl;
 		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
 	}
@@ -33,6 +35,8 @@ int main(int argc, char** argv)
 	//  --threads N | --dark | --bright | --otsu | --thresh N|auto | --offset N
 	std::string profilePath;
 	std::string overlayDir;     // --overlay <dir> (비면 미생성)
+	std::string previewFile;    // --preview <파일> <출력png>
+	std::string previewOut;
 	int numThreads = 0;         // 0 = 자동
 	BinarizeParams binParams;   // 기본 FIXED 127 BRIGHT(기존 동작)
 
@@ -54,6 +58,11 @@ int main(int argc, char** argv)
 		else if (a.rfind("--overlay=", 0) == 0)
 		{
 			overlayDir = a.substr(10);
+		}
+		else if (a == "--preview")
+		{
+			if (i + 1 < argc) previewFile = argv[++i];
+			if (i + 1 < argc) previewOut = argv[++i];
 		}
 		else if (a == "--dark")
 		{
@@ -96,6 +105,39 @@ int main(int argc, char** argv)
 		{
 			profilePath = a; // 첫 비옵션 = 프로파일 경로
 		}
+	}
+
+	// --- 미리보기 모드: 파일 1장 이진화 결과만 PNG 저장 후 종료(배치 로직과 동일) ---
+	if (!previewFile.empty() && !previewOut.empty())
+	{
+		try
+		{
+			cv::Mat src = cv::imread(previewFile, cv::IMREAD_GRAYSCALE);
+			if (src.empty())
+			{
+				std::cout << "preview: load failed: " << previewFile << std::endl;
+				return 2;
+			}
+			CpuPreprocessor pre(binParams);
+			cv::Mat bin = pre.Binarize(src);
+			if (bin.empty())
+			{
+				std::cout << "preview: binarize failed" << std::endl;
+				return 2;
+			}
+			if (!cv::imwrite(previewOut, bin))
+			{
+				std::cout << "preview: write failed: " << previewOut << std::endl;
+				return 2;
+			}
+			std::cout << "preview saved: " << previewOut << std::endl;
+		}
+		catch (const std::exception& e)
+		{
+			std::cout << "preview: exception: " << e.what() << std::endl;
+			return 2;
+		}
+		return 0;
 	}
 
 	// 프로파일(옵션)
