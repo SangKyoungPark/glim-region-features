@@ -84,6 +84,7 @@
               <option value="fixed">고정 임계값</option>
               <option value="auto" selected>자동 (배경평균±offset)</option>
               <option value="binary">Binary (이미 이진화됨)</option>
+              <option value="wrinkle">Wrinkle (주름)</option>
             </select>
           </div>
         </div>
@@ -95,6 +96,14 @@
           <div class="field" id="offsetField">
             <label for="offset">자동 offset</label>
             <input id="offset" type="number" value="20">
+          </div>
+          <div class="field" id="kernelField">
+            <label for="kernel">주름 커널 크기</label>
+            <input id="kernel" type="number" min="1" value="15">
+          </div>
+          <div class="field" id="responseField">
+            <label for="response">주름 응답 임계값</label>
+            <input id="response" type="number" min="0" value="10">
           </div>
         </div>
 

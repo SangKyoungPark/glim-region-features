@@ -23,6 +23,7 @@ int main(int argc, char** argv)
 	{
 		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]"
 			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--binary] [--offset N]"
+			<< " [--wrinkle [--kernel N] [--response N]]"
 			<< " [--overlay <dir>] [--preview <file> <out.png>]" << std::endl;
 		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
@@ -79,6 +80,24 @@ int main(int argc, char** argv)
 		else if (a == "--otsu")
 		{
 			binParams.m_mode = BINMODE_OTSU;
+		}
+		else if (a == "--wrinkle")
+		{
+			binParams.m_mode = BINMODE_WRINKLE;
+		}
+		else if (a == "--kernel" || a.rfind("--kernel=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--kernel=", 0) == 0) v = a.substr(9);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_kernelSize = std::atoi(v.c_str());
+		}
+		else if (a == "--response" || a.rfind("--response=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--response=", 0) == 0) v = a.substr(11);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_responseThresh = std::atof(v.c_str());
 		}
 		else if (a == "--thresh" || a.rfind("--thresh=", 0) == 0)
 		{
@@ -163,11 +182,16 @@ int main(int argc, char** argv)
 
 	const char* modeStr = (binParams.m_mode == BINMODE_OTSU) ? "otsu"
 		: (binParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset"
-		: (binParams.m_mode == BINMODE_BINARY) ? "binary" : "fixed";
+		: (binParams.m_mode == BINMODE_BINARY) ? "binary"
+		: (binParams.m_mode == BINMODE_WRINKLE) ? "wrinkle" : "fixed";
 	const char* polStr = (binParams.m_polarity == POLARITY_DARK) ? "dark" : "bright";
 	std::cout << "binarize: mode=" << modeStr << " polarity=" << polStr
 		<< " threshold=" << binParams.m_threshold
-		<< " offset=" << binParams.m_offset << std::endl;
+		<< " offset=" << binParams.m_offset;
+	if (binParams.m_mode == BINMODE_WRINKLE)
+		std::cout << " kernel=" << binParams.m_kernelSize
+			<< " response=" << binParams.m_responseThresh;
+	std::cout << std::endl;
 
 	if (!overlayDir.empty())
 		std::cout << "overlay: " << overlayDir << std::endl;

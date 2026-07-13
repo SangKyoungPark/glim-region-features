@@ -65,6 +65,8 @@ function readSettings() {
     mode: el("mode").value,
     thresh: parseInt(el("thresh").value, 10),
     offset: parseInt(el("offset").value, 10),
+    kernel: parseInt(el("kernel").value, 10),
+    response: parseInt(el("response").value, 10),
   };
 }
 function applySettings(s) {
@@ -76,13 +78,17 @@ function applySettings(s) {
   if (s.mode) el("mode").value = s.mode;
   if (s.thresh !== undefined && !Number.isNaN(s.thresh)) el("thresh").value = s.thresh;
   if (s.offset !== undefined && !Number.isNaN(s.offset)) el("offset").value = s.offset;
+  if (s.kernel !== undefined && !Number.isNaN(s.kernel)) el("kernel").value = s.kernel;
+  if (s.response !== undefined && !Number.isNaN(s.response)) el("response").value = s.response;
   syncBinFields();
 }
-// 방식에 따라 TH/offset 입력 노출 토글
+// 방식에 따라 TH/offset/커널/응답 입력 노출 토글
 function syncBinFields() {
   const mode = el("mode").value;
   el("threshField").style.display = (mode === "fixed") ? "" : "none";
   el("offsetField").style.display = (mode === "auto") ? "" : "none";
+  el("kernelField").style.display = (mode === "wrinkle") ? "" : "none";
+  el("responseField").style.display = (mode === "wrinkle") ? "" : "none";
 }
 
 // ---------- 최근 실행 기록 (localStorage) ----------
@@ -114,6 +120,7 @@ function renderRecent() {
     const dt = new Date(e.time);
     const ts = `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
     const binDesc = e.mode === "binary" ? `${e.polarity}·binary`
+      : e.mode === "wrinkle" ? `wrinkle(k ${e.kernel}/r ${e.response})`
       : e.mode === "auto" ? `${e.polarity}·auto(off ${e.offset})`
         : `${e.polarity}·fixed(TH ${e.thresh})`;
     return `<div class="recent-item" data-idx="${i}">
@@ -178,6 +185,8 @@ function updatePreview() {
     polarity: s.polarity, mode: s.mode,
     thresh: String(Number.isNaN(s.thresh) ? 127 : s.thresh),
     offset: String(Number.isNaN(s.offset) ? 20 : s.offset),
+    kernel: String(Number.isNaN(s.kernel) ? 15 : s.kernel),
+    response: String(Number.isNaN(s.response) ? 10 : s.response),
     _: String(Date.now()),   // 캐시 방지
   });
   const binUrl = "/api/preview?" + q.toString();
@@ -503,6 +512,8 @@ el("mode").addEventListener("change", () => { syncBinFields(); updatePreview(); 
 el("polarity").addEventListener("change", updatePreview);
 el("thresh").addEventListener("input", updatePreview);
 el("offset").addEventListener("input", updatePreview);
+el("kernel").addEventListener("input", updatePreview);
+el("response").addEventListener("input", updatePreview);
 el("clearRecent").addEventListener("click", () => { saveRecent([]); renderRecent(); });
 
 el("histFeature").addEventListener("change", () => { if (state.data) renderHistogram(); });

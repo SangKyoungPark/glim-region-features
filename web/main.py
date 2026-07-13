@@ -52,9 +52,11 @@ class RunRequest(BaseModel):
     threads: int = 0             # 0 = 자동
     # 이진화(granular). mode 비면 legacy binarize 키로 폴백.
     polarity: str = "bright"     # bright | dark
-    mode: str = ""               # fixed | auto | binary | ""(legacy)
+    mode: str = ""               # fixed | auto | binary | wrinkle | ""(legacy)
     thresh: int = 127            # fixed 용 (0~255)
     offset: int = 20             # auto 용
+    kernel: int = 15             # wrinkle 용 (BLACKHAT 커널 크기)
+    response: int = 10           # wrinkle 용 (BLACKHAT 응답 임계값)
     binarize: str = "bright127"  # legacy: bright127 | dark127 | darkauto | brightauto | binary
 
 
@@ -72,7 +74,7 @@ def _list_images(folder, n=None):
     return names[:n] if n else names
 
 
-def build_binarize(polarity, mode, thresh, offset, legacy_key=None):
+def build_binarize(polarity, mode, thresh, offset, legacy_key=None, kernel=15, response=10):
     """granular 파라미터 → GlimRegionBatch CLI 플래그 + 캐시 라벨. mode 비면 legacy 키 폴백."""
     polarity = (polarity or "").lower()
     mode = (mode or "").lower()
@@ -84,8 +86,16 @@ def build_binarize(polarity, mode, thresh, offset, legacy_key=None):
         offset = int(offset)
     except (TypeError, ValueError):
         offset = 20
+    try:
+        kernel = int(kernel)
+    except (TypeError, ValueError):
+        kernel = 15
+    try:
+        response = int(response)
+    except (TypeError, ValueError):
+        response = 10
 
-    if mode not in ("fixed", "auto", "binary"):
+    if mode not in ("fixed", "auto", "binary", "wrinkle"):
         lk = (legacy_key or "bright127").lower()
         if lk == "dark127":
             polarity, mode, thresh = "dark", "fixed", 127
@@ -100,6 +110,13 @@ def build_binarize(polarity, mode, thresh, offset, legacy_key=None):
 
     if polarity not in ("bright", "dark"):
         polarity = "bright"
+
+    # WRINKLE 은 극성과 무관(항상 어두운 선 검출). 별도 플래그 세트로 구성.
+    if mode == "wrinkle":
+        kernel = max(1, kernel)
+        flags = ["--wrinkle", "--kernel", str(kernel), "--response", str(response)]
+        label = "wrinkle-k%d-r%d" % (kernel, response)
+        return flags, label
 
     flags = ["--dark"] if polarity == "dark" else ["--bright"]
     if mode == "binary":
@@ -243,7 +260,8 @@ def api_run(req: RunRequest):
 
     # 이진화 플래그 + 캐시 라벨(granular 우선, mode 비면 legacy binarize 폴백)
     bin_flags, bin_label = build_binarize(
-        req.polarity, req.mode, req.thresh, req.offset, legacy_key=req.binarize)
+        req.polarity, req.mode, req.thresh, req.offset, legacy_key=req.binarize,
+        kernel=req.kernel, response=req.response)
 
     # 실행 캐시 폴더 = 해시(폴더+프로파일+이진화)
     key = "%s|%s|%s" % (_norm(folder), profile_key, bin_label)
@@ -333,6 +351,8 @@ def api_preview(
     mode: str = "fixed",
     thresh: int = 127,
     offset: int = 20,
+    kernel: int = 15,
+    response: int = 10,
     binarize: str = "",
 ):
     """선택 1장의 이진화 결과 PNG 를 반환. 실제 배치와 동일하도록 exe --preview 재사용."""
@@ -350,7 +370,8 @@ def api_preview(
     if not exe:
         return JSONResponse({"error": "GlimRegionBatch.exe 를 찾을 수 없습니다."}, status_code=500)
 
-    bin_flags, bin_label = build_binarize(polarity, mode, thresh, offset, legacy_key=binarize)
+    bin_flags, bin_label = build_binarize(polarity, mode, thresh, offset, legacy_key=binarize,
+        kernel=kernel, response=response)
 
     # 미리보기 출력 캐시 파일(파라미터+파일 해시). 매번 덮어써도 무방하나 해시로 경합 회피.
     prev_dir = os.path.join(config.CACHE_DIR, "preview")

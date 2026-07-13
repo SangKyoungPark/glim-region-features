@@ -29,7 +29,8 @@ enum BinarizeMode {
 	BINMODE_FIXED = 0,       // 고정 임계값(m_threshold)
 	BINMODE_OTSU = 1,        // Otsu 자동 임계값
 	BINMODE_MEAN_OFFSET = 2, // 배경 평균 기반: thresh = mean ± offset
-	BINMODE_BINARY = 3       // 이미 이진화됨: threshold 0 (0 초과 = Region), 극성만 반영
+	BINMODE_BINARY = 3,      // 이미 이진화됨: threshold 0 (0 초과 = Region), 극성만 반영
+	BINMODE_WRINKLE = 4      // 주름(밝은 무지부 위 미세 어두운 선): 밝은영역 마스크 ∩ BLACKHAT 응답
 };
 
 // 극성: Region 으로 잡을 밝기 방향
@@ -44,10 +45,16 @@ struct BinarizeParams {
 	double m_threshold; // FIXED 용
 	double m_offset;    // MEAN_OFFSET 용 (DARK: mean-offset 미만이 Region, BRIGHT: mean+offset 초과가 Region)
 
+	// WRINKLE 용 (다른 모드에서는 무시). 실측 검증 파이프라인(60/60):
+	int m_kernelSize;        // BLACKHAT 수평 RECT 커널 폭(가로 N x 세로 1). 기본 15
+	int m_blurH;             // 세로 누적 blur 길이(가로 1 x 세로 N). SNR 확보 핵심. 기본 31
+	double m_responseThresh; // 누적 응답 이진화 임계값. 기본 4
+
 	// 기본값 = 기존 동작(FIXED 127, BRIGHT) 100% 동일
 	BinarizeParams()
 		: m_mode(BINMODE_FIXED), m_polarity(POLARITY_BRIGHT)
-		, m_threshold(127.0), m_offset(20.0) {}
+		, m_threshold(127.0), m_offset(20.0)
+		, m_kernelSize(15), m_blurH(31), m_responseThresh(4.0) {}
 };
 
 // 기본 CPU 구현: (필요 시 그레이 변환) → 모드/극성에 따른 threshold.
