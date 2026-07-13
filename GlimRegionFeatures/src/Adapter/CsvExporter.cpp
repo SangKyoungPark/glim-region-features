@@ -126,9 +126,18 @@ std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const std::s
 
 bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& outputCsv,
 	const ProfileLoader* profile, BatchStat& statOut,
-	int numThreads, const IPreprocessor* preprocessor)
+	int numThreads, const IPreprocessor* preprocessor,
+	const std::string& overlayDir)
 {
 	statOut = BatchStat();
+
+	// 오버레이 출력 폴더 준비(비어있지 않으면)
+	const bool makeOverlay = !overlayDir.empty();
+	if (makeOverlay)
+	{
+		try { fs::create_directories(overlayDir); }
+		catch (...) { /* 생성 실패해도 CSV 는 진행 */ }
+	}
 	const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
 	// 전처리기: null 이면 기본 CPU 구현(GPU 구현으로 교체 가능). const 공유(무상태).
@@ -217,6 +226,22 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 				}
 
 				std::vector<Region> regions = extractor.Extract(bin, 1);
+
+				// 오버레이 PNG 저장(원본 그레이→BGR, Region 컨투어 빨강). 파일별 독립 → 병렬 안전.
+				if (makeOverlay)
+				{
+					try
+					{
+						cv::Mat ov;
+						cv::cvtColor(img, ov, cv::COLOR_GRAY2BGR);
+						for (size_t r = 0; r < regions.size(); ++r)
+							cv::drawContours(ov, regions[r].AllContours(), -1, cv::Scalar(0, 0, 255), 1);
+						const std::string ovPath =
+							(fs::path(overlayDir) / (fileName + "_ov.png")).string();
+						cv::imwrite(ovPath, ov);
+					}
+					catch (...) { /* 오버레이 실패는 CSV 에 영향 없음 */ }
+				}
 
 				std::string block;
 				if (regions.empty())
