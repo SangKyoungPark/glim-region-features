@@ -15,3 +15,9 @@ ipch/
 
 # Generated CSV output (test runs)
 *.csv
+
+# Web dashboard runtime
+web/.venv/
+web/cache/
+__pycache__/
+*.pyc
