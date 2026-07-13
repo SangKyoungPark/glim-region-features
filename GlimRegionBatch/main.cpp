@@ -23,7 +23,7 @@ int main(int argc, char** argv)
 	{
 		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]"
 			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--binary] [--offset N]"
-			<< " [--wrinkle [--kernel N] [--response N]]"
+			<< " [--wrinkle [--kernel N] [--blur N] [--response N]]"
 			<< " [--overlay <dir>] [--preview <file> <out.png>]" << std::endl;
 		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
@@ -91,6 +91,13 @@ int main(int argc, char** argv)
 			if (a.rfind("--kernel=", 0) == 0) v = a.substr(9);
 			else if (i + 1 < argc) v = argv[++i];
 			binParams.m_kernelSize = std::atoi(v.c_str());
+		}
+		else if (a == "--blur" || a.rfind("--blur=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--blur=", 0) == 0) v = a.substr(7);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_blurH = std::atoi(v.c_str());
 		}
 		else if (a == "--response" || a.rfind("--response=", 0) == 0)
 		{
@@ -190,6 +197,7 @@ int main(int argc, char** argv)
 		<< " offset=" << binParams.m_offset;
 	if (binParams.m_mode == BINMODE_WRINKLE)
 		std::cout << " kernel=" << binParams.m_kernelSize
+			<< " blur=" << binParams.m_blurH
 			<< " response=" << binParams.m_responseThresh;
 	std::cout << std::endl;
 
