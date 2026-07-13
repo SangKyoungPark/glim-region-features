@@ -24,6 +24,7 @@ int main(int argc, char** argv)
 		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]"
 			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--binary] [--offset N]"
 			<< " [--wrinkle [--kernel N] [--blur N] [--response N]]"
+			<< " [--proj [--black-th N] [--white-th N] [--proj-kernel N]]"
 			<< " [--overlay <dir>] [--preview <file> <out.png>]" << std::endl;
 		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
@@ -106,6 +107,31 @@ int main(int argc, char** argv)
 			else if (i + 1 < argc) v = argv[++i];
 			binParams.m_responseThresh = std::atof(v.c_str());
 		}
+		else if (a == "--proj" || a == "--projection")
+		{
+			binParams.m_mode = BINMODE_PROJECTION;
+		}
+		else if (a == "--black-th" || a.rfind("--black-th=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--black-th=", 0) == 0) v = a.substr(11);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_projBlackTh = std::atof(v.c_str());
+		}
+		else if (a == "--white-th" || a.rfind("--white-th=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--white-th=", 0) == 0) v = a.substr(11);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_projWhiteTh = std::atof(v.c_str());
+		}
+		else if (a == "--proj-kernel" || a.rfind("--proj-kernel=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--proj-kernel=", 0) == 0) v = a.substr(14);
+			else if (i + 1 < argc) v = argv[++i];
+			binParams.m_projKernel = std::atoi(v.c_str());
+		}
 		else if (a == "--thresh" || a.rfind("--thresh=", 0) == 0)
 		{
 			std::string v;
@@ -145,7 +171,17 @@ int main(int argc, char** argv)
 				return 2;
 			}
 			CpuPreprocessor pre(binParams);
-			cv::Mat bin = pre.Binarize(src);
+			// PROJECTION 은 흑/백 2채널을 가로로 이어붙여 1장으로 반환(웹에서 나란히 표시).
+			cv::Mat bin;
+			std::vector<BinChannel> chans = pre.BinarizeMulti(src);
+			if (chans.size() >= 2)
+			{
+				cv::hconcat(chans[0].image, chans[1].image, bin); // B | W
+			}
+			else if (chans.size() == 1)
+			{
+				bin = chans[0].image;
+			}
 			if (bin.empty())
 			{
 				std::cout << "preview: binarize failed" << std::endl;
@@ -190,7 +226,8 @@ int main(int argc, char** argv)
 	const char* modeStr = (binParams.m_mode == BINMODE_OTSU) ? "otsu"
 		: (binParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset"
 		: (binParams.m_mode == BINMODE_BINARY) ? "binary"
-		: (binParams.m_mode == BINMODE_WRINKLE) ? "wrinkle" : "fixed";
+		: (binParams.m_mode == BINMODE_WRINKLE) ? "wrinkle"
+		: (binParams.m_mode == BINMODE_PROJECTION) ? "projection" : "fixed";
 	const char* polStr = (binParams.m_polarity == POLARITY_DARK) ? "dark" : "bright";
 	std::cout << "binarize: mode=" << modeStr << " polarity=" << polStr
 		<< " threshold=" << binParams.m_threshold
@@ -199,6 +236,10 @@ int main(int argc, char** argv)
 		std::cout << " kernel=" << binParams.m_kernelSize
 			<< " blur=" << binParams.m_blurH
 			<< " response=" << binParams.m_responseThresh;
+	if (binParams.m_mode == BINMODE_PROJECTION)
+		std::cout << " black-th=" << binParams.m_projBlackTh
+			<< " white-th=" << binParams.m_projWhiteTh
+			<< " proj-kernel=" << binParams.m_projKernel;
 	std::cout << std::endl;
 
 	if (!overlayDir.empty())

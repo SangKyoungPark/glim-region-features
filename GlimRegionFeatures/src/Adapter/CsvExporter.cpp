@@ -74,8 +74,8 @@ std::vector<std::string> CsvExporter::ScoreFeatureNames(const ProfileLoader* pro
 
 std::string CsvExporter::BuildHeader(const ProfileLoader* profile)
 {
-	// FileName 뒤에 FilePath 삽입(기존 사용자 인지 순서 유지)
-	std::string header = "FileName,FilePath,RegionIndex," + FeatureVector::CsvHeader();
+	// FileName 뒤에 FilePath 삽입(기존 사용자 인지 순서 유지). RegionIndex 뒤에 Channel(B/W) 추가.
+	std::string header = "FileName,FilePath,RegionIndex,Channel," + FeatureVector::CsvHeader();
 	if (profile != NULL && profile->IsLoaded())
 	{
 		std::vector<std::string> names = ScoreFeatureNames(profile);
@@ -87,11 +87,12 @@ std::string CsvExporter::BuildHeader(const ProfileLoader* profile)
 }
 
 std::string CsvExporter::BuildRegionRow(const std::string& fileName, const std::string& filePath,
-	int regionIndex, const FeatureVector& fv, const ProfileLoader* profile)
+	int regionIndex, const FeatureVector& fv, const ProfileLoader* profile,
+	const std::string& channel)
 {
 	std::ostringstream oss;
 	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ","
-		<< regionIndex << "," << fv.ToCsvRow();
+		<< regionIndex << "," << channel << "," << fv.ToCsvRow();
 
 	if (profile != NULL && profile->IsLoaded())
 	{
@@ -112,7 +113,8 @@ std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const std::s
 	const std::string emptyFeat(featCols > 0 ? (featCols - 1) : 0, ',');
 
 	std::ostringstream oss;
-	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ",-1," << emptyFeat;
+	// RegionIndex=-1, Channel 공란, 특징값 전부 공란
+	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ",-1,," << emptyFeat;
 
 	if (profile != NULL && profile->IsLoaded())
 	{
@@ -217,25 +219,63 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 					continue;
 				}
 
-				cv::Mat bin = pre.Binarize(img); // GPU 전처리기 삽입 지점
-				if (bin.empty())
+				// 채널 단위 이진화(PROJECTION=흑/백 2채널, 그 외=극성 태그 1채널). GPU 전처리 삽입 지점.
+				std::vector<BinChannel> channels = pre.BinarizeMulti(img);
+				if (channels.empty())
 				{
 					std::lock_guard<std::mutex> lk(failMutex);
 					statOut.m_failedFiles.push_back(fileName + " (binarize failed)");
 					continue;
 				}
-
-				std::vector<Region> regions = extractor.Extract(bin, 1);
-
-				// 오버레이 PNG 저장(원본 그레이→BGR, Region 컨투어 빨강). 파일별 독립 → 병렬 안전.
+				// 오버레이 준비(원본 그레이→BGR). 채널별 색: B=빨강, W=초록.
+				cv::Mat ov;
 				if (makeOverlay)
+				{
+					try { cv::cvtColor(img, ov, cv::COLOR_GRAY2BGR); }
+					catch (...) { ov = cv::Mat(); }
+				}
+
+				std::string block;
+				int regionCounter = 0;      // 이미지 내 채널 통합 연속 인덱스
+				long long fileRegions = 0;
+
+				for (size_t c = 0; c < channels.size(); ++c)
+				{
+					const BinChannel& ch = channels[c];
+					if (ch.image.empty())
+						continue;
+					std::vector<Region> regions = extractor.Extract(ch.image, 1);
+
+					// 오버레이 컨투어(채널색)
+					if (makeOverlay && !ov.empty())
+					{
+						try
+						{
+							const cv::Scalar col = (ch.tag == 'B')
+								? cv::Scalar(0, 0, 255)   // 빨강(흑 불량)
+								: cv::Scalar(0, 255, 0);  // 초록(백 불량)
+							for (size_t r = 0; r < regions.size(); ++r)
+								cv::drawContours(ov, regions[r].AllContours(), -1, col, 1);
+						}
+						catch (...) {}
+					}
+
+					const std::string chTag(1, ch.tag);
+					for (size_t r = 0; r < regions.size(); ++r)
+					{
+						FeatureVector fv = calc.Compute(regions[r]);
+						block += BuildRegionRow(fileName, filePath, regionCounter++, fv,
+							profile, chTag);
+						block += "\r\n";
+					}
+					fileRegions += static_cast<long long>(regions.size());
+				}
+
+				// 오버레이 저장(채널 컨투어 합성). 파일별 독립 → 병렬 안전.
+				if (makeOverlay && !ov.empty())
 				{
 					try
 					{
-						cv::Mat ov;
-						cv::cvtColor(img, ov, cv::COLOR_GRAY2BGR);
-						for (size_t r = 0; r < regions.size(); ++r)
-							cv::drawContours(ov, regions[r].AllContours(), -1, cv::Scalar(0, 0, 255), 1);
 						const std::string ovPath =
 							(fs::path(overlayDir) / (fileName + "_ov.png")).string();
 						cv::imwrite(ovPath, ov);
@@ -243,21 +283,14 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 					catch (...) { /* 오버레이 실패는 CSV 에 영향 없음 */ }
 				}
 
-				std::string block;
-				if (regions.empty())
+				if (fileRegions == 0)
 				{
 					block = BuildEmptyRow(fileName, filePath, profile);
 					block += "\r\n";
 				}
 				else
 				{
-					for (size_t r = 0; r < regions.size(); ++r)
-					{
-						FeatureVector fv = calc.Compute(regions[r]);
-						block += BuildRegionRow(fileName, filePath, static_cast<int>(r), fv, profile);
-						block += "\r\n";
-					}
-					totalRegions.fetch_add(static_cast<long long>(regions.size()));
+					totalRegions.fetch_add(fileRegions);
 				}
 				blocks[i] = block;          // 인덱스 소유 → 경합 없음
 				processed.fetch_add(1);

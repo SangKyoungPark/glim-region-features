@@ -37,8 +37,10 @@ public:
 	static std::string BuildHeader(const ProfileLoader* profile);
 
 	// Region 1개 → CSV 행(개행 없음). filePath = 이미지 절대경로.
+	//  channel: 'B'/'W' 등 채널 태그(비면 공란).
 	static std::string BuildRegionRow(const std::string& fileName, const std::string& filePath,
-		int regionIndex, const FeatureVector& fv, const ProfileLoader* profile);
+		int regionIndex, const FeatureVector& fv, const ProfileLoader* profile,
+		const std::string& channel = std::string());
 
 	// Region 없는 이미지 행(RegionIndex=-1). filePath = 이미지 절대경로.
 	static std::string BuildEmptyRow(const std::string& fileName, const std::string& filePath,

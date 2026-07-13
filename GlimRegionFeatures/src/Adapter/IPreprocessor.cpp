@@ -4,6 +4,53 @@
 
 namespace Grf {
 
+namespace {
+	// 그레이 8UC1 표준화(내부 공용)
+	bool ToGray8U(const cv::Mat& src, cv::Mat& gray)
+	{
+		if (src.empty())
+			return false;
+		if (src.channels() != 1)
+			cv::cvtColor(src, gray, cv::COLOR_BGR2GRAY);
+		else
+			gray = src;
+		if (gray.type() != CV_8UC1)
+		{
+			cv::Mat tmp;
+			gray.convertTo(tmp, CV_8UC1);
+			gray = tmp;
+		}
+		return true;
+	}
+
+	// PROJECTION 흑/백 이진화(검사기 Do_Search_Candidate 근사).
+	//  proj[x] = 열평균(전체 행). 검사기는 uchar 정수 강하(nSum/nCnt)이나 여기선 float 계산.
+	//  국소평균 = boxFilter(kxk) (검사기 4x4 커널 평균 근사).
+	//  흑: proj[x] - 국소평균 > blackTh,  백: 국소평균 - proj[x] > whiteTh (strict >, 검사기 동일).
+	void ProjectionBinarize(const cv::Mat& gray, double blackTh, double whiteTh, int k,
+		cv::Mat& outBlack, cv::Mat& outWhite)
+	{
+		if (k < 1) k = 1;
+
+		// 열평균 프로파일(1 x cols, float) → 전체 행으로 브로드캐스트
+		cv::Mat colMean;
+		cv::reduce(gray, colMean, 0 /*행 축소 → 열별 평균*/, cv::REDUCE_AVG, CV_32F);
+		cv::Mat projFull;
+		cv::repeat(colMean, gray.rows, 1, projFull); // rows x cols, CV_32F
+
+		// 국소평균(4x4 근사)
+		cv::Mat smooth;
+		cv::boxFilter(gray, smooth, CV_32F, cv::Size(k, k));
+
+		// 흑: proj - smooth > blackTh  (어두운 불량)
+		cv::Mat diffB = projFull - smooth;
+		outBlack = (diffB > blackTh);        // CV_8U 0/255
+		// 백: smooth - proj > whiteTh  (밝은 불량)
+		cv::Mat diffW = smooth - projFull;
+		outWhite = (diffW > whiteTh);
+	}
+} // namespace
+
 cv::Mat CpuPreprocessor::Binarize(const cv::Mat& src) const
 {
 	// 무상태: 모든 작업은 지역 Mat 으로만 수행(재진입 안전).
@@ -108,6 +155,16 @@ cv::Mat CpuPreprocessor::Binarize(const cv::Mat& src) const
 			break;
 		}
 
+		case BINMODE_PROJECTION:
+		{
+			// 단일 Binarize() 호출 시에는 극성에 맞는 채널 1장을 반환(흑/백 모두 필요하면 BinarizeMulti).
+			cv::Mat black, white;
+			ProjectionBinarize(gray, m_params.m_projBlackTh, m_params.m_projWhiteTh,
+				m_params.m_projKernel, black, white);
+			bin = (m_params.m_polarity == POLARITY_DARK) ? black : white;
+			break;
+		}
+
 		case BINMODE_FIXED:
 		default:
 			cv::threshold(gray, bin, m_params.m_threshold, 255.0, baseType);
@@ -118,6 +175,44 @@ cv::Mat CpuPreprocessor::Binarize(const cv::Mat& src) const
 	catch (const cv::Exception&)
 	{
 		return cv::Mat();
+	}
+}
+
+std::vector<BinChannel> CpuPreprocessor::BinarizeMulti(const cv::Mat& src) const
+{
+	std::vector<BinChannel> out;
+	if (src.empty())
+		return out;
+
+	try
+	{
+		cv::Mat gray;
+		if (!ToGray8U(src, gray))
+			return out;
+
+		if (m_params.m_mode == BINMODE_PROJECTION)
+		{
+			// 흑/백 2채널(검사기 흑/백 이미지 대응). 순서: B 먼저, W 다음.
+			cv::Mat black, white;
+			ProjectionBinarize(gray, m_params.m_projBlackTh, m_params.m_projWhiteTh,
+				m_params.m_projKernel, black, white);
+			if (!black.empty()) out.push_back(BinChannel(black, 'B'));
+			if (!white.empty()) out.push_back(BinChannel(white, 'W'));
+			return out;
+		}
+
+		// 그 외 모드: 단일 채널. 태그는 극성 기준(dark→B, bright→W).
+		cv::Mat b = Binarize(src);
+		if (!b.empty())
+		{
+			const char tag = (m_params.m_polarity == POLARITY_DARK) ? 'B' : 'W';
+			out.push_back(BinChannel(b, tag));
+		}
+		return out;
+	}
+	catch (const cv::Exception&)
+	{
+		return out;
 	}
 }
 
