@@ -25,6 +25,7 @@ int main(int argc, char** argv)
 			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--binary] [--offset N]"
 			<< " [--wrinkle [--kernel N] [--blur N] [--response N]]"
 			<< " [--proj [--black-th N] [--white-th N] [--proj-kernel N]]"
+			<< " [--scale-x F] [--scale-y F] [--dumpbin <dir>]"
 			<< " [--overlay <dir>] [--preview <file> <out.png>]" << std::endl;
 		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
@@ -41,6 +42,7 @@ int main(int argc, char** argv)
 	std::string previewOut;
 	int numThreads = 0;         // 0 = 자동
 	BinarizeParams binParams;   // 기본 FIXED 127 BRIGHT(기존 동작)
+	ExportOptions expOpts;      // scale-x/y=1.0, dumpbin 없음(기존 동작)
 
 	for (int i = 3; i < argc; ++i)
 	{
@@ -131,6 +133,28 @@ int main(int argc, char** argv)
 			if (a.rfind("--proj-kernel=", 0) == 0) v = a.substr(14);
 			else if (i + 1 < argc) v = argv[++i];
 			binParams.m_projKernel = std::atoi(v.c_str());
+		}
+		else if (a == "--scale-x" || a.rfind("--scale-x=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--scale-x=", 0) == 0) v = a.substr(10);
+			else if (i + 1 < argc) v = argv[++i];
+			expOpts.m_scaleX = std::atof(v.c_str());
+		}
+		else if (a == "--scale-y" || a.rfind("--scale-y=", 0) == 0)
+		{
+			std::string v;
+			if (a.rfind("--scale-y=", 0) == 0) v = a.substr(10);
+			else if (i + 1 < argc) v = argv[++i];
+			expOpts.m_scaleY = std::atof(v.c_str());
+		}
+		else if (a == "--dumpbin")
+		{
+			if (i + 1 < argc) expOpts.m_dumpBinDir = argv[++i];
+		}
+		else if (a.rfind("--dumpbin=", 0) == 0)
+		{
+			expOpts.m_dumpBinDir = a.substr(10);
 		}
 		else if (a == "--thresh" || a.rfind("--thresh=", 0) == 0)
 		{
@@ -242,8 +266,11 @@ int main(int argc, char** argv)
 			<< " proj-kernel=" << binParams.m_projKernel;
 	std::cout << std::endl;
 
+	std::cout << "scale: x=" << expOpts.m_scaleX << " y=" << expOpts.m_scaleY << std::endl;
 	if (!overlayDir.empty())
 		std::cout << "overlay: " << overlayDir << std::endl;
+	if (!expOpts.m_dumpBinDir.empty())
+		std::cout << "dumpbin: " << expOpts.m_dumpBinDir << std::endl;
 
 	CpuPreprocessor preprocessor(binParams);
 
@@ -252,7 +279,7 @@ int main(int argc, char** argv)
 	try
 	{
 		ok = CsvExporter::ExportFolder(inputDir, outputCsv, profilePtr, stat,
-			numThreads, &preprocessor, overlayDir);
+			numThreads, &preprocessor, overlayDir, expOpts);
 	}
 	catch (const std::exception& e)
 	{

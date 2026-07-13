@@ -27,6 +27,15 @@ struct BatchStat {
 		: m_totalFiles(0), m_processedFiles(0), m_totalRegions(0), m_elapsedMs(0) {}
 };
 
+// 배치 출력 옵션(스케일/이진화 덤프). 기본값은 스케일 1.0, 덤프 없음(기존 동작 무변경).
+struct ExportOptions {
+	double m_scaleX;           // mm/px (X). CSV 파생 mm 컬럼 계산용. 기본 1.0
+	double m_scaleY;           // mm/px (Y). 기본 1.0
+	std::string m_dumpBinDir;  // 비면 미저장. 각 이미지의 이진화 PNG 저장 폴더
+
+	ExportOptions() : m_scaleX(1.0), m_scaleY(1.0) {}
+};
+
 class CsvExporter {
 public:
 	// 지원 확장자 판정(.bmp/.png/.jpg/.jpeg/.tif/.tiff, 대소문자 무시)
@@ -37,10 +46,11 @@ public:
 	static std::string BuildHeader(const ProfileLoader* profile);
 
 	// Region 1개 → CSV 행(개행 없음). filePath = 이미지 절대경로.
-	//  channel: 'B'/'W' 등 채널 태그(비면 공란).
+	//  channel: 'B'/'W' 등 채널 태그(비면 공란). scaleX/Y: mm 파생 컬럼 계산용(기본 1.0).
 	static std::string BuildRegionRow(const std::string& fileName, const std::string& filePath,
 		int regionIndex, const FeatureVector& fv, const ProfileLoader* profile,
-		const std::string& channel = std::string());
+		const std::string& channel = std::string(),
+		double scaleX = 1.0, double scaleY = 1.0);
 
 	// Region 없는 이미지 행(RegionIndex=-1). filePath = 이미지 절대경로.
 	static std::string BuildEmptyRow(const std::string& fileName, const std::string& filePath,
@@ -57,7 +67,8 @@ public:
 	static bool ExportFolder(const std::string& inputDir, const std::string& outputCsv,
 		const ProfileLoader* profile, BatchStat& statOut,
 		int numThreads = 0, const IPreprocessor* preprocessor = NULL,
-		const std::string& overlayDir = std::string());
+		const std::string& overlayDir = std::string(),
+		const ExportOptions& options = ExportOptions());
 
 	// 프로파일의 Score 특징값 이름 순서(컬럼 고정용).
 	static std::vector<std::string> ScoreFeatureNames(const ProfileLoader* profile);

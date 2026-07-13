@@ -7,6 +7,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <chrono>
 #include <thread>
 #include <atomic>
@@ -83,12 +84,14 @@ std::string CsvExporter::BuildHeader(const ProfileLoader* profile)
 			header += ",score_" + names[i];
 		header += ",ClassifiedCode";
 	}
+	// CSV 끝: mm 파생 컬럼(픽셀 원시 컬럼은 전부 유지, 병기). 스케일 1.0이면 픽셀값과 동일.
+	header += ",area_mm2,width_mm,height_mm,diameter_mm";
 	return header;
 }
 
 std::string CsvExporter::BuildRegionRow(const std::string& fileName, const std::string& filePath,
 	int regionIndex, const FeatureVector& fv, const ProfileLoader* profile,
-	const std::string& channel)
+	const std::string& channel, double scaleX, double scaleY)
 {
 	std::ostringstream oss;
 	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ","
@@ -103,6 +106,15 @@ std::string CsvExporter::BuildRegionRow(const std::string& fileName, const std::
 		std::string code = profile->RuleEngine().Classify(fv, "OK");
 		oss << "," << CsvQuote(code);
 	}
+
+	// mm 파생값(bbox 는 inclusive 좌표라 폭/높이는 +1). diameter 는 등방 스케일 근사(sqrt(sx*sy)).
+	const double widthPx = fv.bboxCol2 - fv.bboxCol1 + 1.0;
+	const double heightPx = fv.bboxRow2 - fv.bboxRow1 + 1.0;
+	const double areaMm2 = fv.area * scaleX * scaleY;
+	const double widthMm = widthPx * scaleX;
+	const double heightMm = heightPx * scaleY;
+	const double diameterMm = fv.diameter * std::sqrt(scaleX * scaleY);
+	oss << "," << areaMm2 << "," << widthMm << "," << heightMm << "," << diameterMm;
 	return oss.str();
 }
 
@@ -123,13 +135,15 @@ std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const std::s
 			oss << ",";
 		oss << ",NO_REGION";
 	}
+	// mm 파생 컬럼 4개 공란
+	oss << ",,,,";
 	return oss.str();
 }
 
 bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& outputCsv,
 	const ProfileLoader* profile, BatchStat& statOut,
 	int numThreads, const IPreprocessor* preprocessor,
-	const std::string& overlayDir)
+	const std::string& overlayDir, const ExportOptions& options)
 {
 	statOut = BatchStat();
 
@@ -140,6 +154,16 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 		try { fs::create_directories(overlayDir); }
 		catch (...) { /* 생성 실패해도 CSV 는 진행 */ }
 	}
+
+	// 이진화 덤프 폴더 준비(비어있지 않으면)
+	const bool makeDumpBin = !options.m_dumpBinDir.empty();
+	if (makeDumpBin)
+	{
+		try { fs::create_directories(options.m_dumpBinDir); }
+		catch (...) { /* 생성 실패해도 CSV 는 진행 */ }
+	}
+	const double sx = options.m_scaleX;
+	const double sy = options.m_scaleY;
 	const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
 
 	// 전처리기: null 이면 기본 CPU 구현(GPU 구현으로 교체 가능). const 공유(무상태).
@@ -227,6 +251,8 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 					statOut.m_failedFiles.push_back(fileName + " (binarize failed)");
 					continue;
 				}
+				const bool multiCh = (channels.size() > 1);
+
 				// 오버레이 준비(원본 그레이→BGR). 채널별 색: B=빨강, W=초록.
 				cv::Mat ov;
 				if (makeOverlay)
@@ -245,6 +271,21 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 					if (ch.image.empty())
 						continue;
 					std::vector<Region> regions = extractor.Extract(ch.image, 1);
+
+					// 이진화 덤프 PNG: 다채널이면 <이름>_bin_<태그>.png, 단채널이면 <이름>_bin.png
+					if (makeDumpBin)
+					{
+						try
+						{
+							std::string binName = multiCh
+								? (fileName + "_bin_" + std::string(1, ch.tag) + ".png")
+								: (fileName + "_bin.png");
+							const std::string binPath =
+								(fs::path(options.m_dumpBinDir) / binName).string();
+							cv::imwrite(binPath, ch.image);
+						}
+						catch (...) { /* 덤프 실패는 CSV 에 영향 없음 */ }
+					}
 
 					// 오버레이 컨투어(채널색)
 					if (makeOverlay && !ov.empty())
@@ -265,7 +306,7 @@ bool CsvExporter::ExportFolder(const std::string& inputDir, const std::string& o
 					{
 						FeatureVector fv = calc.Compute(regions[r]);
 						block += BuildRegionRow(fileName, filePath, regionCounter++, fv,
-							profile, chTag);
+							profile, chTag, sx, sy);
 						block += "\r\n";
 					}
 					fileRegions += static_cast<long long>(regions.size());
