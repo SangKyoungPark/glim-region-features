@@ -50,6 +50,11 @@ cv::Mat CpuPreprocessor::Binarize(const cv::Mat& src) const
 			break;
 		}
 
+		case BINMODE_BINARY:
+			// 이미 이진화된 이미지: 0 초과를 Region 으로(극성 반영). 실제 배치 로직과 동일.
+			cv::threshold(gray, bin, 0.0, 255.0, baseType);
+			break;
+
 		case BINMODE_FIXED:
 		default:
 			cv::threshold(gray, bin, m_params.m_threshold, 255.0, baseType);

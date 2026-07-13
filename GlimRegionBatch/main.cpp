@@ -20,7 +20,7 @@ int main(int argc, char** argv)
 	if (argc < 3)
 	{
 		std::cout << "usage: GlimRegionBatch.exe <input_folder> <output.csv> [profile.ini]"
-			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--offset N]"
+			<< " [--threads N] [--dark|--bright] [--thresh N|auto] [--otsu] [--binary] [--offset N]"
 			<< " [--overlay <dir>]" << std::endl;
 		std::cout << "  e.g.: GlimRegionBatch.exe D:\\128Crop\\BlackPoint out.csv --dark --thresh auto" << std::endl;
 		return 1;
@@ -62,6 +62,10 @@ int main(int argc, char** argv)
 		else if (a == "--bright")
 		{
 			binParams.m_polarity = POLARITY_BRIGHT;
+		}
+		else if (a == "--binary")
+		{
+			binParams.m_mode = BINMODE_BINARY;
 		}
 		else if (a == "--otsu")
 		{
@@ -116,7 +120,8 @@ int main(int argc, char** argv)
 	std::cout << "threads: " << (numThreads > 0 ? std::to_string(numThreads) : std::string("auto")) << std::endl;
 
 	const char* modeStr = (binParams.m_mode == BINMODE_OTSU) ? "otsu"
-		: (binParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset" : "fixed";
+		: (binParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset"
+		: (binParams.m_mode == BINMODE_BINARY) ? "binary" : "fixed";
 	const char* polStr = (binParams.m_polarity == POLARITY_DARK) ? "dark" : "bright";
 	std::cout << "binarize: mode=" << modeStr << " polarity=" << polStr
 		<< " threshold=" << binParams.m_threshold

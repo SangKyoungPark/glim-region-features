@@ -26,9 +26,10 @@ public:
 
 // 이진화 모드
 enum BinarizeMode {
-	BINMODE_FIXED = 0,      // 고정 임계값(m_threshold)
-	BINMODE_OTSU = 1,       // Otsu 자동 임계값
-	BINMODE_MEAN_OFFSET = 2 // 배경 평균 기반: thresh = mean ± offset
+	BINMODE_FIXED = 0,       // 고정 임계값(m_threshold)
+	BINMODE_OTSU = 1,        // Otsu 자동 임계값
+	BINMODE_MEAN_OFFSET = 2, // 배경 평균 기반: thresh = mean ± offset
+	BINMODE_BINARY = 3       // 이미 이진화됨: threshold 0 (0 초과 = Region), 극성만 반영
 };
 
 // 극성: Region 으로 잡을 밝기 방향
