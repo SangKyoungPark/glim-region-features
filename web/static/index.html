@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GlimRegion 분석 대시보드</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>GlimRegion 분석 대시보드</h1>
+  <div class="runbar">
+    <label>폴더 경로
+      <input id="folderPath" type="text" placeholder="예: D:/128Crop/BlackPoint" spellcheck="false">
+    </label>
+    <label>프로파일
+      <select id="profile">
+        <option value="coater">코터</option>
+        <option value="rollpress">롤프레스</option>
+        <option value="slitter">슬리터</option>
+        <option value="none">없음</option>
+      </select>
+    </label>
+    <label>이진화
+      <select id="binarize">
+        <option value="bright127">Bright(127)</option>
+        <option value="dark127">Dark(127)</option>
+        <option value="darkauto" selected>Dark auto</option>
+        <option value="brightauto">Bright auto</option>
+      </select>
+    </label>
+    <label>스레드
+      <input id="threads" type="number" min="0" value="0" title="0=자동">
+    </label>
+    <button id="runBtn">분석 실행</button>
+    <span id="runStatus" class="status"></span>
+  </div>
+</header>
+
+<main>
+  <!-- 요약 카드 -->
+  <section id="summary" class="summary-row"></section>
+
+  <!-- 차트 2종 -->
+  <section class="charts-row">
+    <div class="chart-card">
+      <h2>불량 분포 <small>(분류코드별 Region 수)</small></h2>
+      <div id="distChart" class="chart"></div>
+    </div>
+    <div class="chart-card">
+      <h2>Score 분석 <small>(분류코드별 score 평균)</small></h2>
+      <div id="scoreChart" class="chart"></div>
+    </div>
+  </section>
+
+  <!-- 갤러리 컨트롤 -->
+  <section class="gallery-controls">
+    <div class="filters" id="codeFilters"></div>
+    <div class="sortbox">
+      정렬:
+      <select id="sortKey">
+        <option value="regionIndex">순서(기본)</option>
+        <option value="area">area</option>
+        <option value="circularity">circularity</option>
+        <option value="roundness">roundness</option>
+        <option value="anisometry">anisometry</option>
+        <option value="convexity">convexity</option>
+        <option value="diameter">diameter</option>
+      </select>
+      <button id="sortDir" data-dir="desc" title="정렬 방향">▼</button>
+    </div>
+  </section>
+
+  <!-- 갤러리 카드 리스트 -->
+  <section id="gallery" class="gallery"></section>
+</main>
+
+<!-- 상세 패널(모달) -->
+<div id="detailOverlay" class="detail-overlay hidden">
+  <div class="detail-panel">
+    <button id="detailClose" class="detail-close">✕</button>
+    <div id="detailBody"></div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
