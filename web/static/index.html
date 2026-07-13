@@ -153,6 +153,20 @@
         <div id="scoreChart" class="chart"></div>
       </div>
     </div>
+    <div class="chart-card">
+      <div class="hist-head">
+        <h2>특징값 히스토그램 <small>(분류코드별 누적)</small></h2>
+        <label class="inline-field">특징
+          <select id="histFeature">
+            <option value="area">area</option>
+            <option value="circularity">circularity</option>
+            <option value="roundness">roundness</option>
+            <option value="anisometry">anisometry</option>
+          </select>
+        </label>
+      </div>
+      <div id="histChart" class="chart"></div>
+    </div>
     <div id="analysisEmpty" class="empty big">아직 실행 결과가 없습니다. 설정 탭에서 분석을 실행하세요.</div>
   </section>
 </main>

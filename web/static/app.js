@@ -223,6 +223,7 @@ function render() {
   renderSummary();
   renderDist();
   renderScoreChart();
+  renderHistogram();
   renderFilters();
   renderGallery();
 }
@@ -297,6 +298,81 @@ function renderScoreChart() {
   let legend = '<div class="legend">';
   feats.forEach((f, i) => {
     legend += `<span class="lg-item"><span class="lg-dot" style="background:${featColor(i)}"></span>${esc(f)}</span>`;
+  });
+  legend += "</div>";
+  box.innerHTML = svg + legend;
+}
+
+// 특징값 히스토그램: 선택 특징을 구간(bin)으로 나누고 분류코드별로 누적(stacked) 세로 막대
+function renderHistogram() {
+  const box = el("histChart");
+  const feature = el("histFeature").value;
+  const rows = (state.data.rows || []).filter(r => r.regionIndex >= 0 && typeof r[feature] === "number" && Number.isFinite(r[feature]));
+  if (!rows.length) { box.innerHTML = '<div class="empty">해당 특징 데이터 없음</div>'; return; }
+
+  const vals = rows.map(r => r[feature]);
+  let vmin = Math.min(...vals), vmax = Math.max(...vals);
+  if (vmin === vmax) { vmax = vmin + 1; }  // 단일값 방어
+  const BINS = 12;
+  const span = vmax - vmin;
+  const binOf = v => Math.min(BINS - 1, Math.floor(((v - vmin) / span) * BINS));
+
+  // 분류코드 목록(분포 순서 유지)
+  const codes = (state.data.defectDistribution || [])
+    .map(d => d.code).filter(c => c !== "NO_REGION");
+  const codeSet = new Set(codes);
+  rows.forEach(r => { const c = r.classifiedCode || "(none)"; if (!codeSet.has(c)) { codeSet.add(c); codes.push(c); } });
+
+  // bins[b][code] = count
+  const bins = Array.from({ length: BINS }, () => ({}));
+  let maxTotal = 0;
+  rows.forEach(r => {
+    const b = binOf(r[feature]);
+    const c = r.classifiedCode || "(none)";
+    bins[b][c] = (bins[b][c] || 0) + 1;
+  });
+  bins.forEach(b => { maxTotal = Math.max(maxTotal, Object.values(b).reduce((s, v) => s + v, 0)); });
+  if (maxTotal === 0) { box.innerHTML = '<div class="empty">데이터 없음</div>'; return; }
+
+  const chartH = 180, leftPad = 34, topPad = 10, bottomPad = 34;
+  const barW = 34, barGap = 6;
+  const w = leftPad + BINS * (barW + barGap) + 10;
+  const h = topPad + chartH + bottomPad;
+
+  let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
+  // y 그리드
+  const ticks = 4;
+  for (let t = 0; t <= ticks; t++) {
+    const val = Math.round((maxTotal / ticks) * t);
+    const y = topPad + chartH - (t / ticks) * chartH;
+    svg += `<line x1="${leftPad}" y1="${y}" x2="${w - 5}" y2="${y}" stroke="#2e3646"></line>`;
+    svg += `<text x="${leftPad - 6}" y="${y + 4}" text-anchor="end" fill="#9aa3b2" font-size="10">${val}</text>`;
+  }
+  // 누적 막대
+  for (let b = 0; b < BINS; b++) {
+    const x = leftPad + b * (barW + barGap);
+    let acc = 0;
+    codes.forEach(code => {
+      const cnt = bins[b][code] || 0;
+      if (!cnt) return;
+      const bh = (cnt / maxTotal) * chartH;
+      const y = topPad + chartH - acc - bh;
+      svg += `<rect x="${x}" y="${y}" width="${barW}" height="${bh}" fill="${codeColor(code)}"><title>${esc(code)}: ${cnt} (bin ${b + 1})</title></rect>`;
+      acc += bh;
+    });
+    // x 라벨(구간 하한)
+    if (b % 2 === 0) {
+      const lo = vmin + (span / BINS) * b;
+      svg += `<text x="${x + barW / 2}" y="${topPad + chartH + 14}" text-anchor="middle" fill="#9aa3b2" font-size="9">${lo.toFixed(span > 20 ? 0 : 2)}</text>`;
+    }
+  }
+  svg += `<text x="${w / 2}" y="${h - 4}" text-anchor="middle" fill="#9aa3b2" font-size="10">${esc(feature)} 값 구간</text>`;
+  svg += `</svg>`;
+
+  // 범례(코드별)
+  let legend = '<div class="legend">';
+  codes.forEach(code => {
+    legend += `<span class="lg-item"><span class="lg-dot" style="background:${codeColor(code)}"></span>${esc(code)}</span>`;
   });
   legend += "</div>";
   box.innerHTML = svg + legend;
@@ -429,6 +505,7 @@ el("thresh").addEventListener("input", updatePreview);
 el("offset").addEventListener("input", updatePreview);
 el("clearRecent").addEventListener("click", () => { saveRecent([]); renderRecent(); });
 
+el("histFeature").addEventListener("change", () => { if (state.data) renderHistogram(); });
 el("sortKey").addEventListener("change", e => { state.sortKey = e.target.value; if (state.data) renderGallery(); });
 el("sortDir").addEventListener("click", () => {
   state.sortDir = state.sortDir === "asc" ? "desc" : "asc";

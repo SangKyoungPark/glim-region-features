@@ -120,6 +120,8 @@ main { padding: 18px; max-width: 1500px; margin: 0 auto; }
 .legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 11px; color: var(--fg-dim); }
 .lg-item { display: inline-flex; align-items: center; gap: 5px; }
 .lg-dot { width: 10px; height: 10px; border-radius: 2px; }
+.hist-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.hist-head h2 { margin: 0; }
 
 /* 요약 카드 */
 .summary-row { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
