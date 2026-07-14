@@ -1,6 +1,7 @@
 ﻿// ImageViewCtrl.cpp : 결과 탭 상세 이미지 뷰 구현
 #include "stdafx.h"
 #include "ImageViewCtrl.h"
+#include "GrfViewSupport.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -8,6 +9,8 @@
 
 CImageViewCtrl::CImageViewCtrl()
 	: m_zoom(4)
+	, m_badgeChannel('W')
+	, m_showBadge(false)
 {
 }
 
@@ -46,9 +49,18 @@ void CImageViewCtrl::SetZoom(int zoom)
 		Invalidate(FALSE);
 }
 
+void CImageViewCtrl::SetChannelBadge(char channel, bool show)
+{
+	m_badgeChannel = channel;
+	m_showBadge = show;
+	if (GetSafeHwnd())
+		Invalidate(FALSE);
+}
+
 void CImageViewCtrl::Clear()
 {
 	m_img = cv::Mat();
+	m_showBadge = false;
 	if (GetSafeHwnd())
 		Invalidate(FALSE);
 }
@@ -131,6 +143,20 @@ void CImageViewCtrl::OnPaint()
 	}
 	catch (...)
 	{
+	}
+
+	// 선택 Region 의 흑/백 채널 뱃지(좌상단 소형 칩)
+	if (m_showBadge && !m_img.empty())
+	{
+		const CString chTxt(m_badgeChannel);
+		const COLORREF chColor = GrfView::ChannelColor(m_badgeChannel);
+		CRect chRc(8, 8, 34, 30);
+		mem.FillSolidRect(chRc, chColor);
+		CBrush chBorder(RGB(20, 20, 20));
+		mem.FrameRect(chRc, &chBorder);
+		mem.SetBkMode(TRANSPARENT);
+		mem.SetTextColor(RGB(255, 255, 255));
+		mem.DrawText(chTxt, &chRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 	}
 
 	dc.BitBlt(0, 0, fw, fh, &mem, 0, 0, SRCCOPY);

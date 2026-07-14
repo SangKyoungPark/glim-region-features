@@ -45,6 +45,10 @@ struct RegionResult {
 // 분류코드 → 고정 COLORREF. 알 수 없는 코드는 문자열 해시로 안정적 색 생성.
 COLORREF DefectCodeColor(const std::string& code);
 
+// 이진화 채널 태그('B' 흑/어두운 불량, 'W' 백/밝은 불량) → 뱃지 색.
+//  PROJECTION 등 흑/백 2채널 결과의 시각 구분에 카드/상세 뷰가 공용으로 쓴다.
+COLORREF ChannelColor(char channel);
+
 // ────────────────────────────────────────────────────────────────
 // 파일 그레이 원본 LRU 캐시. 카드/미리보기가 썸네일 렌더 시 조회.
 //  128x128 크롭 기준. 수백 장 폴더에서도 상주 메모리를 capacity 로 제한.

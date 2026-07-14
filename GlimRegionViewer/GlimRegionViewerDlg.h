@@ -59,8 +59,11 @@ private:
 
 	// --- 데이터 흐름 ---
 	void LoadFolder(const CString& dir);
-	void LoadImageAt(int index);   // m_files[index] 로드(상세 뷰용)
-	void AnalyzeCurrent();         // 현재 이미지 Region 추출 + 특징값(상세 뷰)
+	// m_files[index] 로드(상세 뷰용). params!=NULL 이면 그 파라미터로,
+	//  NULL 이면 현재 UI 값(CurrentBinarizeParams)으로 이진화한다.
+	void LoadImageAt(int index, const Grf::BinarizeParams* params = NULL);
+	// 현재 이미지 Region 추출 + 특징값(상세 뷰, 채널별). params 로 이진화.
+	void AnalyzeCurrent(const cv::Mat& gray, const Grf::BinarizeParams& params);
 	void UpdateFeatureList();       // 결과 탭 상세 특징값 패널 갱신
 	void UpdatePreview();           // 설정 탭 미리보기 재계산
 	void RunAnalysis();             // 폴더 전체 분석 → 결과/분석 탭 채우기
@@ -73,6 +76,7 @@ private:
 
 	// --- 상태 ---
 	Grf::BinarizeParams CurrentBinarizeParams() const;
+	bool IsProjectionMode() const;      // 이진화 콤보가 Projection(모드 6) 선택 상태인지
 	int  GetEditInt(UINT id, int def) const;
 	double GetEditDouble(UINT id, double def) const;
 
@@ -96,6 +100,9 @@ private:
 	CEdit m_editWkKernel;
 	CEdit m_editWkBlur;
 	CEdit m_editWkResp;
+	CEdit m_editPBlackTh;   // PROJECTION 흑 임계
+	CEdit m_editPWhiteTh;   // PROJECTION 백 임계
+	CEdit m_editPKernel;    // PROJECTION 국소평균 커널
 
 	CPreviewPanelCtrl m_preview;
 	CResultCardCtrl m_cards;
@@ -107,9 +114,14 @@ private:
 	std::vector<std::string> m_files;   // 폴더 내 이미지 전체 경로
 	int m_curIndex;                     // 현재 선택 인덱스(-1 없음)
 
-	cv::Mat m_binImage;                 // 현재 이미지(0/255) — 상세 뷰
+	cv::Mat m_binImage;                 // 현재 이미지(0/255) — 상세 뷰(채널 합집합)
 	std::vector<Grf::Region> m_regions;
 	std::vector<Grf::FeatureVector> m_features;
+	std::vector<char> m_regionChannels; // m_regions 병렬: 각 Region 의 채널('B'/'W')
+	bool m_activeProjection;            // m_regions 를 만든 파라미터가 PROJECTION 이었는지(오버레이/뱃지 색 판정)
+	bool m_lastAnalysisProjection;      // 마지막 폴더 분석이 PROJECTION 모드였는지(홈 요약용)
+	Grf::BinarizeParams m_analysisParams; // RunAnalysis 시점 파라미터 스냅샷(카드 클릭 재분석에 재사용)
+	bool m_hasAnalysisParams;           // 스냅샷 유효 여부
 
 	std::vector<GrfView::RegionResult> m_results; // 폴더 전체 분석 결과(카드/차트/홈)
 	GrfView::ThumbCache m_thumbCache;

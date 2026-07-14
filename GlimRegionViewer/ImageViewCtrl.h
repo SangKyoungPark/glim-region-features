@@ -17,6 +17,7 @@ public:
 
 	void SetImage(const cv::Mat& bgr); // 8UC3 BGR(오버레이 포함) 또는 empty
 	void SetZoom(int zoom);            // 정수 배율(<=0 = fit)
+	void SetChannelBadge(char channel, bool show); // 선택 Region 의 흑/백 채널 뱃지(좌상단)
 	void Clear();
 
 protected:
@@ -27,4 +28,6 @@ protected:
 private:
 	cv::Mat m_img; // BGR
 	int m_zoom;
+	char m_badgeChannel; // 'B'/'W'
+	bool m_showBadge;
 };

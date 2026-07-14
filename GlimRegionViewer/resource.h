@@ -49,11 +49,19 @@
 #define IDC_STATIC_HOME                 1043
 #define IDC_IMAGE_VIEW                  1044
 
+// Projection(inspector-style) binarize parameters (created dynamically)
+#define IDC_STATIC_PBLACK_LABEL         1045
+#define IDC_EDIT_PBLACK_TH              1046
+#define IDC_STATIC_PWHITE_LABEL         1047
+#define IDC_EDIT_PWHITE_TH              1048
+#define IDC_STATIC_PKERNEL_LABEL        1049
+#define IDC_EDIT_PKERNEL                1050
+
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        101
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1045
+#define _APS_NEXT_CONTROL_VALUE         1051
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

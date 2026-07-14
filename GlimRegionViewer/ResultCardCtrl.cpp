@@ -333,6 +333,18 @@ void CResultCardCtrl::DrawCard(CDC* pDC, const CRect& cardRc, int resultIdx, boo
 	lineRc.bottom = lineRc.top + 16;
 	pDC->DrawText(head, &lineRc, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
 
+	// 채널 뱃지(B/W 색 구분) — 카드 우상단 소형 칩
+	{
+		const CString chTxt(rr.channel);
+		const COLORREF chColor = GrfView::ChannelColor(rr.channel);
+		CRect chRc(cardRc.right - 34, cardRc.top + 8, cardRc.right - 10, cardRc.top + 26);
+		pDC->FillSolidRect(chRc, chColor);
+		CBrush chBorder(RGB(30, 30, 34));
+		pDC->FrameRect(chRc, &chBorder);
+		pDC->SetTextColor(RGB(255, 255, 255));
+		pDC->DrawText(chTxt, &chRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+	}
+
 	pDC->SetTextColor(RGB(200, 205, 215));
 	CString feats;
 	feats.Format(_T("area %.0f  circ %.3f  conv %.3f\nround %.3f  aniso %.2f"),

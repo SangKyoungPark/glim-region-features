@@ -18,6 +18,10 @@
 // 레이아웃 상수(픽셀). 클라이언트 1180 x 780 기준.
 // ------------------------------------------------------------------
 namespace {
+	// 상세 뷰(AnalyzeCurrent)와 폴더 분석(RunAnalysis→AnalyzeFiles→ProcessOne)이
+	//  반드시 동일 값을 써야 채널 순회 regionIndex 매핑이 일치한다.
+	const int kDefaultMinArea = 1;
+
 	const int kClientW = 1180;
 	const int kClientH = 780;
 
@@ -53,6 +57,9 @@ CGlimRegionViewerDlg::CGlimRegionViewerDlg(CWnd* pParent /*=NULL*/)
 	, m_curTab(TAB_SETTINGS)
 	, m_curIndex(-1)
 	, m_thumbCache(96)
+	, m_activeProjection(false)
+	, m_lastAnalysisProjection(false)
+	, m_hasAnalysisParams(false)
 	, m_profileLoaded(false)
 	, m_xScale(1.0)
 	, m_yScale(1.0)
@@ -85,6 +92,9 @@ BEGIN_MESSAGE_MAP(CGlimRegionViewerDlg, CDialogEx)
 	ON_EN_KILLFOCUS(IDC_EDIT_WK_KERNEL, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_WK_BLUR, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_WK_RESP, &CGlimRegionViewerDlg::OnParamEditChanged)
+	ON_EN_KILLFOCUS(IDC_EDIT_PBLACK_TH, &CGlimRegionViewerDlg::OnParamEditChanged)
+	ON_EN_KILLFOCUS(IDC_EDIT_PWHITE_TH, &CGlimRegionViewerDlg::OnParamEditChanged)
+	ON_EN_KILLFOCUS(IDC_EDIT_PKERNEL, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_XSCALE, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_YSCALE, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST_FILES, &CGlimRegionViewerDlg::OnFileListItemChanged)
@@ -197,8 +207,8 @@ void CGlimRegionViewerDlg::SetupControls()
 		m_comboBinarize.SetFont(pFont);
 		const LPCTSTR modes[] = {
 			_T("Bright(127)"), _T("Dark(127)"), _T("Dark auto"), _T("Bright auto"),
-			_T("Binary"), _T("Wrinkle") };
-		for (int i = 0; i < 6; ++i)
+			_T("Binary"), _T("Wrinkle"), _T("Projection(검사기 방식)") };
+		for (int i = 0; i < 7; ++i)
 			m_comboBinarize.AddString(modes[i]);
 		m_comboBinarize.SetCurSel(0);
 	}
@@ -245,6 +255,29 @@ void CGlimRegionViewerDlg::SetupControls()
 		m_editWkResp.Create(WS_CHILD | WS_TABSTOP | WS_BORDER, CRect(218, r2, 262, r2 + 22), this, IDC_EDIT_WK_RESP);
 		m_editWkResp.SetFont(pFont);
 		m_editWkResp.SetWindowText(_T("4"));
+	}
+	// projection 흑TH / 백TH / 커널 — 모드 6 (동일 행, 배타적 표시)
+	{
+		CStatic* lb = new CStatic();
+		lb->Create(_T("흑TH"), WS_CHILD | SS_CENTERIMAGE, CRect(18, r2, 56, r2 + 22), this, IDC_STATIC_PBLACK_LABEL);
+		lb->SetFont(pFont);
+		m_editPBlackTh.Create(WS_CHILD | WS_TABSTOP | WS_BORDER, CRect(58, r2, 108, r2 + 22), this, IDC_EDIT_PBLACK_TH);
+		m_editPBlackTh.SetFont(pFont);
+		m_editPBlackTh.SetWindowText(_T("25"));
+
+		CStatic* lw = new CStatic();
+		lw->Create(_T("백TH"), WS_CHILD | SS_CENTERIMAGE, CRect(114, r2, 152, r2 + 22), this, IDC_STATIC_PWHITE_LABEL);
+		lw->SetFont(pFont);
+		m_editPWhiteTh.Create(WS_CHILD | WS_TABSTOP | WS_BORDER, CRect(154, r2, 204, r2 + 22), this, IDC_EDIT_PWHITE_TH);
+		m_editPWhiteTh.SetFont(pFont);
+		m_editPWhiteTh.SetWindowText(_T("25"));
+
+		CStatic* lk = new CStatic();
+		lk->Create(_T("Kernel"), WS_CHILD | SS_CENTERIMAGE, CRect(210, r2, 250, r2 + 22), this, IDC_STATIC_PKERNEL_LABEL);
+		lk->SetFont(pFont);
+		m_editPKernel.Create(WS_CHILD | WS_TABSTOP | WS_BORDER | ES_NUMBER, CRect(252, r2, 296, r2 + 22), this, IDC_EDIT_PKERNEL);
+		m_editPKernel.SetFont(pFont);
+		m_editPKernel.SetWindowText(_T("4"));
 	}
 	// X/Y Scale
 	{
@@ -321,7 +354,8 @@ void CGlimRegionViewerDlg::SetupControls()
 	m_listFeatures.InsertColumn(3, _T("Conv"), LVCFMT_RIGHT, 54);
 	m_listFeatures.InsertColumn(4, _T("Round"), LVCFMT_RIGHT, 56);
 	m_listFeatures.InsertColumn(5, _T("Aniso"), LVCFMT_RIGHT, 56);
-	m_listFeatures.InsertColumn(6, _T("Code"), LVCFMT_LEFT, 80);
+	m_listFeatures.InsertColumn(6, _T("Ch"), LVCFMT_CENTER, 32);
+	m_listFeatures.InsertColumn(7, _T("Code"), LVCFMT_LEFT, 80);
 
 	// ========== 분석 탭 ==========
 	{
@@ -360,6 +394,9 @@ void CGlimRegionViewerDlg::BuildPageControlLists()
 		IDC_STATIC_WK_LABEL, IDC_EDIT_WK_KERNEL,
 		IDC_STATIC_WB_LABEL, IDC_EDIT_WK_BLUR,
 		IDC_STATIC_WR_LABEL, IDC_EDIT_WK_RESP,
+		IDC_STATIC_PBLACK_LABEL, IDC_EDIT_PBLACK_TH,
+		IDC_STATIC_PWHITE_LABEL, IDC_EDIT_PWHITE_TH,
+		IDC_STATIC_PKERNEL_LABEL, IDC_EDIT_PKERNEL,
 		IDC_STATIC_XSCALE_LABEL, IDC_EDIT_XSCALE,
 		IDC_STATIC_YSCALE_LABEL, IDC_EDIT_YSCALE,
 		IDC_BTN_ANALYZE, IDC_LIST_FILES, IDC_PREVIEW_PANEL
@@ -411,10 +448,11 @@ void CGlimRegionViewerDlg::UpdateBinarizeParamVisibility()
 	if (m_curTab != TAB_SETTINGS)
 		return;
 	const int sel = m_comboBinarize.GetCurSel();
-	// 모드: 0 Bright(127) 1 Dark(127) 2 Dark auto 3 Bright auto 4 Binary 5 Wrinkle
+	// 모드: 0 Bright(127) 1 Dark(127) 2 Dark auto 3 Bright auto 4 Binary 5 Wrinkle 6 Projection
 	const bool fixed = (sel == 0 || sel == 1);
 	const bool autoOff = (sel == 2 || sel == 3);
 	const bool wrinkle = (sel == 5);
+	const bool proj = (sel == 6);
 
 	struct { UINT id; bool vis; } vis[] = {
 		{ IDC_STATIC_TH_LABEL, fixed }, { IDC_EDIT_TH, fixed },
@@ -422,6 +460,9 @@ void CGlimRegionViewerDlg::UpdateBinarizeParamVisibility()
 		{ IDC_STATIC_WK_LABEL, wrinkle }, { IDC_EDIT_WK_KERNEL, wrinkle },
 		{ IDC_STATIC_WB_LABEL, wrinkle }, { IDC_EDIT_WK_BLUR, wrinkle },
 		{ IDC_STATIC_WR_LABEL, wrinkle }, { IDC_EDIT_WK_RESP, wrinkle },
+		{ IDC_STATIC_PBLACK_LABEL, proj }, { IDC_EDIT_PBLACK_TH, proj },
+		{ IDC_STATIC_PWHITE_LABEL, proj }, { IDC_EDIT_PWHITE_TH, proj },
+		{ IDC_STATIC_PKERNEL_LABEL, proj }, { IDC_EDIT_PKERNEL, proj },
 	};
 	for (size_t i = 0; i < sizeof(vis) / sizeof(vis[0]); ++i)
 	{
@@ -534,6 +575,14 @@ void CGlimRegionViewerDlg::RefreshDetailView()
 	try
 	{
 		m_detailView.SetImage(BuildOverlayMat());
+
+		// 선택 Region 의 흑/백 채널 뱃지(PROJECTION 등 다채널일 때만 의미)
+		const bool multiCh = m_activeProjection;
+		if (multiCh && m_highlightRegion >= 0 &&
+			m_highlightRegion < static_cast<int>(m_regionChannels.size()))
+			m_detailView.SetChannelBadge(m_regionChannels[m_highlightRegion], true);
+		else
+			m_detailView.SetChannelBadge('W', false);
 	}
 	catch (...)
 	{
@@ -554,11 +603,20 @@ cv::Mat CGlimRegionViewerDlg::BuildOverlayMat()
 
 	try
 	{
+		// PROJECTION 등 다채널 모드면 채널색으로, 아니면 기존 초록으로 컨투어를 그린다.
+		//  현재 m_regions 를 만든 파라미터 기준(m_activeProjection). 라이브 콤보와 별개.
+		const bool multiCh = m_activeProjection;
 		for (size_t i = 0; i < m_regions.size(); ++i)
 		{
 			if (static_cast<int>(i) == m_highlightRegion)
 				continue;
-			cv::drawContours(bgr, m_regions[i].AllContours(), -1, cv::Scalar(0, 200, 0), 1);
+			cv::Scalar col(0, 200, 0);
+			if (multiCh && i < m_regionChannels.size())
+			{
+				COLORREF cr = GrfView::ChannelColor(m_regionChannels[i]);
+				col = cv::Scalar(GetBValue(cr), GetGValue(cr), GetRValue(cr)); // BGR
+			}
+			cv::drawContours(bgr, m_regions[i].AllContours(), -1, col, 1);
 		}
 		if (m_highlightRegion >= 0 && m_highlightRegion < static_cast<int>(m_regions.size()))
 		{
@@ -625,17 +683,21 @@ void CGlimRegionViewerDlg::LoadFolder(const CString& dir)
 		m_binImage = cv::Mat();
 		m_regions.clear();
 		m_features.clear();
+		m_regionChannels.clear();
 		UpdateFeatureList();
 		UpdatePreview();
 		RefreshDetailView();
 	}
 }
 
-void CGlimRegionViewerDlg::LoadImageAt(int index)
+void CGlimRegionViewerDlg::LoadImageAt(int index, const Grf::BinarizeParams* params)
 {
 	if (index < 0 || index >= static_cast<int>(m_files.size()))
 		return;
 	m_curIndex = index;
+
+	// params 지정(카드 클릭 = 분석 스냅샷) 우선, 없으면 현재 UI 값(대화형 탐색)
+	const Grf::BinarizeParams bp = params ? *params : CurrentBinarizeParams();
 
 	try
 	{
@@ -645,27 +707,24 @@ void CGlimRegionViewerDlg::LoadImageAt(int index)
 			m_binImage = cv::Mat();
 			m_regions.clear();
 			m_features.clear();
+			m_regionChannels.clear();
 			m_highlightRegion = -1;
+			m_activeProjection = (bp.m_mode == Grf::BINMODE_PROJECTION);
 			SetStatus(_T("이미지 로드 실패: ") + ToCStr(m_files[index]));
 			UpdateFeatureList();
 			RefreshDetailView();
 			return;
 		}
 
-		Grf::CpuPreprocessor pre(CurrentBinarizeParams());
-		m_binImage = pre.Binarize(gray);
+		AnalyzeCurrent(gray, bp);
 		if (m_binImage.empty())
 		{
-			m_regions.clear();
-			m_features.clear();
-			m_highlightRegion = -1;
 			SetStatus(_T("이진화 실패: ") + ToCStr(m_files[index]));
 			UpdateFeatureList();
 			RefreshDetailView();
 			return;
 		}
 
-		AnalyzeCurrent();
 		UpdateFeatureList();
 
 		CString msg;
@@ -678,6 +737,7 @@ void CGlimRegionViewerDlg::LoadImageAt(int index)
 		m_binImage = cv::Mat();
 		m_regions.clear();
 		m_features.clear();
+		m_regionChannels.clear();
 		SetStatus(CString(_T("OpenCV 오류: ")) + CString(e.what()));
 	}
 	catch (...)
@@ -688,29 +748,55 @@ void CGlimRegionViewerDlg::LoadImageAt(int index)
 	RefreshDetailView();
 }
 
-void CGlimRegionViewerDlg::AnalyzeCurrent()
+void CGlimRegionViewerDlg::AnalyzeCurrent(const cv::Mat& gray, const Grf::BinarizeParams& params)
 {
 	m_regions.clear();
 	m_features.clear();
+	m_regionChannels.clear();
+	m_binImage = cv::Mat();
 	m_highlightRegion = -1;
+	m_activeProjection = (params.m_mode == Grf::BINMODE_PROJECTION);
 
-	if (m_binImage.empty())
+	if (gray.empty())
 		return;
 
 	try
 	{
-		Grf::RegionExtractor extractor;
-		m_regions = extractor.Extract(m_binImage, 1);
+		// 채널 순회(PROJECTION 은 흑 B → 백 W, 그 외 모드는 극성 채널 1장).
+		//  regionIndex 를 채널을 가로질러 연속 부여하여 결과 카드(ProcessOne)와 순서를 일치시킨다.
+		Grf::CpuPreprocessor pre(params);
+		std::vector<Grf::BinChannel> channels = pre.BinarizeMulti(gray);
 
+		Grf::RegionExtractor extractor;
 		Grf::FeatureCalculator calc;
-		m_features.reserve(m_regions.size());
-		for (size_t i = 0; i < m_regions.size(); ++i)
-			m_features.push_back(calc.Compute(m_regions[i]));
+
+		for (size_t c = 0; c < channels.size(); ++c)
+		{
+			const cv::Mat& chImg = channels[c].image;
+			if (chImg.empty())
+				continue;
+
+			// 상세 뷰 배경용 합집합(흑|백 채널을 한 장으로)
+			if (m_binImage.empty())
+				m_binImage = chImg.clone();
+			else
+				cv::bitwise_or(m_binImage, chImg, m_binImage);
+
+			std::vector<Grf::Region> regions = extractor.Extract(chImg, kDefaultMinArea);
+			for (size_t r = 0; r < regions.size(); ++r)
+			{
+				m_regions.push_back(regions[r]);
+				m_features.push_back(calc.Compute(regions[r]));
+				m_regionChannels.push_back(channels[c].tag);
+			}
+		}
 	}
 	catch (...)
 	{
 		m_regions.clear();
 		m_features.clear();
+		m_regionChannels.clear();
+		m_binImage = cv::Mat();
 	}
 }
 
@@ -733,13 +819,19 @@ void CGlimRegionViewerDlg::UpdateFeatureList()
 		s.Format(_T("%.3f"), fv.roundness);   m_listFeatures.SetItemText(row, 4, s);
 		s.Format(_T("%.2f"), fv.anisometry);  m_listFeatures.SetItemText(row, 5, s);
 
+		// 채널(B/W). m_regionChannels 는 m_features 와 병렬.
+		CString ch;
+		if (i < m_regionChannels.size())
+			ch = CString(m_regionChannels[i]);
+		m_listFeatures.SetItemText(row, 6, ch);
+
 		CString code;
 		if (m_profileLoaded)
 		{
 			try { code = ToCStr(m_profile.RuleEngine().Classify(fv, "OK")); }
 			catch (...) { code = _T(""); }
 		}
-		m_listFeatures.SetItemText(row, 6, code);
+		m_listFeatures.SetItemText(row, 7, code);
 	}
 }
 
@@ -759,6 +851,7 @@ void CGlimRegionViewerDlg::UpdatePreview()
 				labels.push_back(_T("Original"));
 
 				Grf::CpuPreprocessor pre(CurrentBinarizeParams());
+				const bool proj = IsProjectionMode();
 				std::vector<Grf::BinChannel> ch = pre.BinarizeMulti(gray);
 				for (size_t i = 0; i < ch.size() && slots.size() < 3; ++i)
 				{
@@ -766,7 +859,11 @@ void CGlimRegionViewerDlg::UpdatePreview()
 						continue;
 					slots.push_back(ch[i].image);
 					CString lb;
-					lb.Format(_T("Binarized (%c)"), ch[i].tag);
+					if (proj)
+						lb.Format(_T("%s 이진화 (%c)"),
+							ch[i].tag == 'B' ? _T("흑") : _T("백"), ch[i].tag);
+					else
+						lb.Format(_T("Binarized (%c)"), ch[i].tag);
 					labels.push_back(lb);
 				}
 			}
@@ -790,12 +887,18 @@ void CGlimRegionViewerDlg::RunAnalysis()
 	SetStatus(_T("분석 중..."));
 
 	const int threads = GetEditInt(IDC_EDIT_THREADS, 0);
-	Grf::CpuPreprocessor pre(CurrentBinarizeParams());
+	// 분석 파라미터 스냅샷: 이후 사용자가 UI 값을 바꿔도 카드↔상세뷰 재분석이
+	//  분석 시점과 동일한 이진화/채널 구성을 재현하도록 보관.
+	m_analysisParams = CurrentBinarizeParams();
+	m_hasAnalysisParams = true;
+	m_lastAnalysisProjection = (m_analysisParams.m_mode == Grf::BINMODE_PROJECTION); // 홈 요약 채널 카운트 노출 조건
+
+	Grf::CpuPreprocessor pre(m_analysisParams);
 	const Grf::ProfileLoader* pp = m_profileLoaded ? &m_profile : NULL;
 
 	try
 	{
-		GrfView::AnalyzeFiles(m_files, pre, pp, threads, 1, m_results, NULL);
+		GrfView::AnalyzeFiles(m_files, pre, pp, threads, kDefaultMinArea, m_results, NULL);
 	}
 	catch (...)
 	{
@@ -843,9 +946,23 @@ void CGlimRegionViewerDlg::UpdateHomeSummary()
 	s += line;
 	line.Format(_T("검출 Region(카드): %d 개\r\n"), static_cast<int>(m_results.size()));
 	s += line;
-	line.Format(_T("프로파일: %s\r\n\r\n"),
+	line.Format(_T("프로파일: %s\r\n"),
 		m_profileLoaded ? (LPCTSTR)ToCStr(m_profile.ProfileName()) : _T("(none)"));
 	s += line;
+
+	// 채널별 카운트(PROJECTION 실행 시만) — 흑(B)/백(W)
+	if (m_lastAnalysisProjection && !m_results.empty())
+	{
+		int nB = 0, nW = 0;
+		for (size_t i = 0; i < m_results.size(); ++i)
+		{
+			if (m_results[i].channel == 'B') ++nB;
+			else if (m_results[i].channel == 'W') ++nW;
+		}
+		line.Format(_T("채널별 카운트 (Projection):  B: %d  /  W: %d\r\n"), nB, nW);
+		s += line;
+	}
+	s += _T("\r\n");
 
 	// 분류코드별 카운트
 	std::map<std::string, int> counts;
@@ -1059,6 +1176,13 @@ Grf::BinarizeParams CGlimRegionViewerDlg::CurrentBinarizeParams() const
 		p.m_blurH = GetEditInt(IDC_EDIT_WK_BLUR, 31);
 		p.m_responseThresh = GetEditDouble(IDC_EDIT_WK_RESP, 4.0);
 		break;
+	case 6: // Projection(검사기 방식): 흑/백 2채널
+		p.m_mode = Grf::BINMODE_PROJECTION;
+		p.m_polarity = Grf::POLARITY_DARK; // 단일 Binarize() 시 흑 채널 우선(BinarizeMulti 는 흑/백 모두)
+		p.m_projBlackTh = GetEditDouble(IDC_EDIT_PBLACK_TH, 25.0);
+		p.m_projWhiteTh = GetEditDouble(IDC_EDIT_PWHITE_TH, 25.0);
+		p.m_projKernel = GetEditInt(IDC_EDIT_PKERNEL, 4);
+		break;
 	case 0:
 	default: // Bright 고정
 		p.m_mode = Grf::BINMODE_FIXED;
@@ -1067,6 +1191,11 @@ Grf::BinarizeParams CGlimRegionViewerDlg::CurrentBinarizeParams() const
 		break;
 	}
 	return p;
+}
+
+bool CGlimRegionViewerDlg::IsProjectionMode() const
+{
+	return const_cast<CGlimRegionViewerDlg*>(this)->m_comboBinarize.GetCurSel() == 6;
 }
 
 void CGlimRegionViewerDlg::OnBinarizeChanged()
@@ -1133,10 +1262,13 @@ LRESULT CGlimRegionViewerDlg::OnCardSelected(WPARAM wParam, LPARAM /*lParam*/)
 		return 0;
 
 	const GrfView::RegionResult& rr = m_results[idx];
-	// 해당 파일을 상세 뷰로 로드 후 Region 강조
+	// 해당 파일을 상세 뷰로 로드 후 Region 강조.
+	//  분석 시점 파라미터 스냅샷으로 재분석해야 rr.regionIndex/채널 매핑이 일치한다
+	//  (분석 후 사용자가 UI 이진화 설정을 바꿔도 카드 정합 유지).
 	if (rr.fileIndex >= 0 && rr.fileIndex < static_cast<int>(m_files.size()))
 	{
-		LoadImageAt(rr.fileIndex);
+		const Grf::BinarizeParams* snap = m_hasAnalysisParams ? &m_analysisParams : NULL;
+		LoadImageAt(rr.fileIndex, snap);
 		m_highlightRegion = rr.regionIndex;
 		// 상세 특징값 리스트에서 해당 행 선택
 		if (rr.regionIndex >= 0 && rr.regionIndex < m_listFeatures.GetItemCount())
