@@ -4,7 +4,8 @@
 
 const state = {
   data: null,
-  activeCode: null,   // null = 전체
+  activeCode: null,     // null = 전체
+  activeChannel: null,  // null = 전체, "B" | "W" (projection)
   sortKey: "regionIndex",
   sortDir: "desc",
   previewFiles: [],
@@ -42,6 +43,27 @@ function codeColor(code) {
 function scoreColor(v) {
   const t = Math.max(0, Math.min(100, v || 0));
   return `hsl(${210 - t * 0.7}, 68%, 50%)`;
+}
+// Channel 색: 오버레이 컨투어와 동일 의미(B=흑불량=빨강, W=백불량=초록).
+function channelColor(ch) {
+  const c = (ch || "").toUpperCase();
+  if (c === "B") return "#e0524f";
+  if (c === "W") return "#35b96f";
+  return "#6b7484";
+}
+function channelLabel(ch) {
+  const c = (ch || "").toUpperCase();
+  if (c === "B") return "흑 B";
+  if (c === "W") return "백 W";
+  return "";
+}
+// Channel UI(뱃지/필터)는 projection 실행일 때만 의미가 있음(그 외엔 단일 채널로 전부 동일 태그).
+function showChannels() { return !!(state.data && state.data.isProjection); }
+// mm 표시는 scale 이 1.0 이 아닐 때만(엔진은 scale=1.0 에서도 area_mm2=area 로 항상 컬럼을 채움).
+function scaleApplied() {
+  if (!state.data) return false;
+  const sx = state.data.scaleX, sy = state.data.scaleY;
+  return (typeof sx === "number" && sx !== 1) || (typeof sy === "number" && sy !== 1);
 }
 const FEAT_PALETTE = ["#4ea1ff", "#35c98b", "#ffb454", "#ff6ec7", "#a78bfa", "#f97316", "#22d3ee", "#e879f9"];
 function featColor(i) { return FEAT_PALETTE[i % FEAT_PALETTE.length]; }
@@ -285,6 +307,7 @@ async function runAnalysis() {
     if (!data.ok) { setStatus("오류: " + (data.error || res.status)); return; }
     state.data = data;
     state.activeCode = null;
+    state.activeChannel = null;
     pushRecent(body, data.summary);
     render();
     showTab("results");
@@ -307,6 +330,7 @@ function render() {
   renderScoreChart();
   renderHistogram();
   renderFilters();
+  renderChannelFilters();
   renderGallery();
 }
 
@@ -480,6 +504,34 @@ function renderFilters() {
   });
 }
 
+// Channel(흑/백) 필터 — projection 실행(hasChannel)일 때만 노출
+function renderChannelFilters() {
+  const box = el("channelFilters");
+  if (!box) return;
+  if (!showChannels()) { box.innerHTML = ""; return; }
+
+  const counts = { B: 0, W: 0 };
+  (state.data.rows || []).forEach(r => {
+    const c = (r.channel || "").toUpperCase();
+    if (c === "B" || c === "W") counts[c]++;
+  });
+
+  let html = `<button class="filter-btn ${state.activeChannel === null ? "active" : ""}" data-ch="">채널 전체</button>`;
+  ["B", "W"].forEach(c => {
+    html += `<button class="filter-btn ${state.activeChannel === c ? "active" : ""}" data-ch="${c}">`
+      + `<span class="dot" style="background:${channelColor(c)}"></span>${esc(channelLabel(c))} (${counts[c]})</button>`;
+  });
+  box.innerHTML = html;
+  box.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const c = btn.getAttribute("data-ch");
+      state.activeChannel = c === "" ? null : c;
+      renderChannelFilters();
+      renderGallery();
+    });
+  });
+}
+
 function rowCode(r) {
   return r.regionIndex < 0 ? "NO_REGION" : (r.classifiedCode || "(none)");
 }
@@ -489,6 +541,8 @@ function renderGallery() {
   let rows = state.data.rows.slice();
   if (state.activeCode !== null)
     rows = rows.filter(r => rowCode(r) === state.activeCode);
+  if (state.activeChannel !== null)
+    rows = rows.filter(r => (r.channel || "").toUpperCase() === state.activeChannel);
 
   const k = state.sortKey, dir = state.sortDir === "asc" ? 1 : -1;
   rows.sort((a, b) => {
@@ -513,8 +567,11 @@ function buildCard(r, feats) {
     ["area", 1], ["circularity", 3], ["convexity", 3],
     ["roundness", 3], ["anisometry", 3], ["diameter", 2],
   ];
-  const featHtml = featPairs.map(([key, d]) =>
+  let featHtml = featPairs.map(([key, d]) =>
     `<div class="f"><span class="k">${key}</span><span class="v">${fmt(r[key], d)}</span></div>`).join("");
+  // mm 환산값(scale≠1.0 일 때만 표시)
+  if (scaleApplied() && typeof r.areaMm2 === "number" && Number.isFinite(r.areaMm2))
+    featHtml += `<div class="f mm"><span class="k">area_mm²</span><span class="v">${fmt(r.areaMm2, 4)}</span></div>`;
 
   const scoreHtml = feats.map(f => {
     const v = (r.scores && r.scores[f] !== undefined) ? r.scores[f] : null;
@@ -526,14 +583,20 @@ function buildCard(r, feats) {
 
   const origImg = r.filePath
     ? `<figure><img loading="lazy" src="${imgUrl(r.filePath)}" alt="원본"><figcaption>원본</figcaption></figure>` : "";
+  const binImg = r.binPath
+    ? `<figure><img loading="lazy" src="${imgUrl(r.binPath)}" alt="이진화"><figcaption>이진화</figcaption></figure>` : "";
   const ovImg = r.overlayPath
     ? `<figure><img loading="lazy" src="${imgUrl(r.overlayPath)}" alt="오버레이"><figcaption>오버레이</figcaption></figure>` : "";
 
+  // projection 채널 뱃지(흑 B / 백 W)
+  const chBadge = (showChannels() && (r.channel === "B" || r.channel === "W"))
+    ? `<div class="badge ch-badge" style="background:${channelColor(r.channel)}">${esc(channelLabel(r.channel))}</div>` : "";
+
   card.innerHTML =
-    `<div class="imgs">${origImg}${ovImg}</div>`
+    `<div class="imgs">${origImg}${binImg}${ovImg}</div>`
     + `<div class="feat-grid">${featHtml}</div>`
     + `<div class="score-mini">${scoreHtml || '<span class="sk">score 없음</span>'}</div>`
-    + `<div class="badge" style="background:${badgeCol}">${esc(code)}</div>`
+    + `<div class="badges">${chBadge}<div class="badge" style="background:${badgeCol}">${esc(code)}</div></div>`
     + `<div class="fname">${esc(r.fileName)} · #${r.regionIndex}</div>`;
 
   card.addEventListener("click", () => openDetail(r));
@@ -544,10 +607,23 @@ function buildCard(r, feats) {
 function openDetail(r) {
   const feats = state.data.scoreFeatures || [];
   const code = rowCode(r);
+  const chTag = (showChannels() && (r.channel === "B" || r.channel === "W"))
+    ? ` <span class="badge" style="background:${channelColor(r.channel)};display:inline-block;min-width:auto;padding:3px 10px;font-size:12px">${esc(channelLabel(r.channel))}</span>` : "";
   let html = `<h2 style="margin-bottom:10px">${esc(r.fileName)} · Region #${r.regionIndex}`
-    + ` <span class="badge" style="background:${codeColor(code)};display:inline-block;min-width:auto;padding:3px 10px;font-size:12px">${esc(code)}</span></h2>`;
+    + ` <span class="badge" style="background:${codeColor(code)};display:inline-block;min-width:auto;padding:3px 10px;font-size:12px">${esc(code)}</span>${chTag}</h2>`;
+  if (r.binPath)
+    html += `<img loading="lazy" src="${imgUrl(r.binPath)}" alt="이진화" style="margin-bottom:8px">`;
   if (r.overlayPath)
     html += `<img loading="lazy" src="${imgUrl(r.overlayPath)}" alt="오버레이">`;
+
+  // mm 환산값(scale≠1.0 일 때만)
+  const mmPairs = [["area_mm²", r.areaMm2], ["width_mm", r.widthMm], ["height_mm", r.heightMm], ["diameter_mm", r.diameterMm]];
+  const mmHave = scaleApplied() ? mmPairs.filter(([, v]) => typeof v === "number" && Number.isFinite(v)) : [];
+  if (mmHave.length) {
+    html += `<h2 style="margin:14px 0 6px">mm 환산</h2><table>`;
+    mmHave.forEach(([k, v]) => { html += `<tr><td class="k">${esc(k)}</td><td class="v">${v.toFixed(4)}</td></tr>`; });
+    html += `</table>`;
+  }
 
   if (feats.length) {
     html += `<h2 style="margin:14px 0 6px">Score (0~100)</h2><div class="score-mini">`;

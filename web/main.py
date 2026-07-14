@@ -194,7 +194,27 @@ def _to_float(s):
         return None
 
 
-def _parse_csv(csv_path, overlay_dir):
+def _bin_png_path(bin_dir, file_name, channel):
+    """--dumpbin 결과 이진화 PNG 경로 후보 중 실제 존재하는 것 반환(없으면 "").
+    projection: <이름>_bin_B.png / _bin_W.png, 그 외 단일: <이름>_bin.png.
+    엔진 명명 편차 대비로 fileName(확장자 포함)·stem 두 후보를 모두 확인한다."""
+    if not bin_dir or not file_name:
+        return ""
+    stem = os.path.splitext(file_name)[0]
+    suffixes = []
+    ch = (channel or "").upper()
+    if ch in ("B", "W"):
+        suffixes += ["_bin_%s.png" % ch]
+    suffixes += ["_bin.png"]
+    for base in (file_name, stem):
+        for suf in suffixes:
+            cand = os.path.join(bin_dir, base + suf)
+            if os.path.isfile(cand):
+                return cand
+    return ""
+
+
+def _parse_csv(csv_path, overlay_dir, bin_dir=None):
     """CSV → (rows, columns, score_features)."""
     rows = []
     columns = []
@@ -212,7 +232,9 @@ def _parse_csv(csv_path, overlay_dir):
 
             file_name = rec.get("FileName", "")
             file_path = rec.get("FilePath", "")
+            channel = (rec.get("Channel", "") or "").strip()
             overlay_path = os.path.join(overlay_dir, file_name + "_ov.png") if file_name else ""
+            bin_path = _bin_png_path(bin_dir, file_name, channel) if ri >= 0 else ""
 
             scores = {}
             for feat in score_features:
@@ -233,6 +255,8 @@ def _parse_csv(csv_path, overlay_dir):
                 "fileName": file_name,
                 "filePath": file_path,
                 "overlayPath": overlay_path,
+                "binPath": bin_path,
+                "channel": channel,
                 "regionIndex": ri,
                 "area": _to_float(rec.get("area", "")),
                 "circularity": _to_float(rec.get("circularity", "")),
@@ -241,6 +265,11 @@ def _parse_csv(csv_path, overlay_dir):
                 "convexity": _to_float(rec.get("convexity", "")),
                 "contlength": _to_float(rec.get("contlength", "")),
                 "diameter": _to_float(rec.get("diameter", "")),
+                # mm 파생 컬럼(--scale-x/--scale-y 제공 시에만 CSV 에 존재)
+                "areaMm2": _to_float(rec.get("area_mm2", "")),
+                "widthMm": _to_float(rec.get("width_mm", "")),
+                "heightMm": _to_float(rec.get("height_mm", "")),
+                "diameterMm": _to_float(rec.get("diameter_mm", "")),
                 "classifiedCode": rec.get("ClassifiedCode") if "ClassifiedCode" in columns else None,
                 "scores": scores,
                 "raw": raw,
@@ -349,9 +378,15 @@ def api_run(req: RunRequest):
     if profile_ini:
         args.append(os.path.join(config.PROFILES_DIR, profile_ini))
     args += bin_flags
+    args += scale_flags
     if req.threads and req.threads > 0:
         args += ["--threads", str(int(req.threads))]
     args += ["--overlay", overlay_dir]
+    # 이진화 PNG 덤프(카드에 원본|이진화|오버레이 표시). exe 미지원 시 전달 생략.
+    dump_on = exe_supports(exe, "--dumpbin")
+    if dump_on:
+        os.makedirs(bin_dir, exist_ok=True)
+        args += ["--dumpbin", bin_dir]
 
     # OpenCV DLL 을 PATH 에 추가하고 실행
     env = dict(os.environ)
@@ -375,17 +410,26 @@ def api_run(req: RunRequest):
     m = re.search(r"elapsed \(ms\)\s*:\s*(\d+)", proc.stdout or "")
     exe_elapsed = int(m.group(1)) if m else None
 
-    rows, columns, score_features = _parse_csv(csv_path, overlay_dir)
+    rows, columns, score_features = _parse_csv(
+        csv_path, overlay_dir, bin_dir=(bin_dir if dump_on else None))
     agg = _summarize(rows, score_features)
 
     # 이미지 서빙 허용 폴더 등록
     ALLOWED_DIRS.add(_norm(folder))
+
+    has_mm = any(c in columns for c in ("area_mm2", "width_mm", "height_mm", "diameter_mm"))
+    has_channel = ("Channel" in columns)
 
     return {
         "ok": True,
         "hash": h,
         "profile": profile_key,
         "binarize": bin_label,
+        "isProjection": is_proj,
+        "hasChannel": has_channel,
+        "hasMm": has_mm,
+        "scaleX": sx,
+        "scaleY": sy,
         "columns": columns,
         "scoreFeatures": score_features,
         "summary": dict(agg["summary"], elapsedMs=exe_elapsed if exe_elapsed is not None else elapsed_ms),

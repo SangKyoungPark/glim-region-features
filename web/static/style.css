@@ -189,11 +189,23 @@ main { padding: 18px; max-width: 1500px; margin: 0 auto; }
 .score-mini .sbar > div { height: 100%; border-radius: 3px; }
 .score-mini .sv { font-variant-numeric: tabular-nums; text-align: right; }
 
-/* 4. 분류 뱃지 */
+/* 4. 분류 뱃지 (분류코드 + Channel 을 세로 스택) */
+.card .badges { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .badge {
   padding: 8px 14px; border-radius: 8px; font-weight: 800; font-size: 14px;
   color: #0a0d14; white-space: nowrap; text-align: center; min-width: 96px;
 }
+.ch-badge { padding: 4px 10px; font-size: 12px; font-weight: 700; min-width: auto; }
+
+/* mm 환산 특징(scale≠1.0 시) — 2열 span + 강조 */
+.feat-grid .f.mm { grid-column: 1 / -1; border-bottom: none; color: var(--accent); }
+.feat-grid .f.mm .k { color: var(--accent); }
+
+/* Channel 필터 구분(코드 필터와 시각 분리) */
+.channel-filters { border-left: 1px solid var(--line); padding-left: 12px; }
+
+/* projection 미리보기 3단 로딩 자리 */
+.preview-pane .proj-fig .empty { width: 180px; min-height: 120px; display: flex; align-items: center; justify-content: center; }
 
 /* 상세 패널 */
 .detail-overlay {
