@@ -22,11 +22,38 @@
 #define IDC_COMBO_BINARIZE              1012
 #define IDC_STATIC_BINARIZE_LABEL       1013
 
+// Tab control + dashboard controls (all created dynamically)
+#define IDC_TAB_MAIN                    1020
+#define IDC_STATIC_THREADS_LABEL        1021
+#define IDC_EDIT_THREADS                1022
+#define IDC_STATIC_XSCALE_LABEL         1023
+#define IDC_EDIT_XSCALE                 1024
+#define IDC_STATIC_YSCALE_LABEL         1025
+#define IDC_EDIT_YSCALE                 1026
+#define IDC_STATIC_TH_LABEL             1027
+#define IDC_EDIT_TH                     1028
+#define IDC_STATIC_OFFSET_LABEL         1029
+#define IDC_EDIT_OFFSET                 1030
+#define IDC_STATIC_WK_LABEL             1031
+#define IDC_EDIT_WK_KERNEL              1032
+#define IDC_STATIC_WB_LABEL             1033
+#define IDC_EDIT_WK_BLUR                1034
+#define IDC_STATIC_WR_LABEL             1035
+#define IDC_EDIT_WK_RESP                1036
+#define IDC_BTN_ANALYZE                 1037
+#define IDC_PREVIEW_PANEL               1038
+#define IDC_CARD_LIST                   1039
+#define IDC_STATIC_HISTFEAT_LABEL       1040
+#define IDC_COMBO_HISTFEAT              1041
+#define IDC_CHART_PANEL                 1042
+#define IDC_STATIC_HOME                 1043
+#define IDC_IMAGE_VIEW                  1044
+
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        101
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1012
+#define _APS_NEXT_CONTROL_VALUE         1045
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
