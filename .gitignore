@@ -21,3 +21,4 @@ web/.venv/
 web/cache/
 __pycache__/
 *.pyc
+.claude/
