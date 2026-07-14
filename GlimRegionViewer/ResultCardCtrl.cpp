@@ -272,12 +272,19 @@ void CResultCardCtrl::DrawContent(CDC* pDC, const CRect& client)
 	if (first < 0) first = 0;
 	if (last >= n) last = n - 1;
 
+	// 폰트는 페인트당 1회만 생성(가시 카드마다 재생성 방지)
+	CFont font;
+	font.CreatePointFont(90, _T("Segoe UI"));
+	CFont* pOldFont = pDC->SelectObject(&font);
+
 	for (int i = first; i <= last; ++i)
 	{
 		const int top = i * m_cardH - m_scrollY;
 		CRect cardRc(client.left + 4, top + 3, client.right - 4, top + m_cardH - 3);
 		DrawCard(pDC, cardRc, i, (i == m_sel));
 	}
+
+	pDC->SelectObject(pOldFont);
 }
 
 void CResultCardCtrl::DrawCard(CDC* pDC, const CRect& cardRc, int resultIdx, bool selected)
@@ -292,9 +299,7 @@ void CResultCardCtrl::DrawCard(CDC* pDC, const CRect& cardRc, int resultIdx, boo
 	pDC->FrameRect(cardRc, &border);
 
 	pDC->SetBkMode(TRANSPARENT);
-	CFont font;
-	font.CreatePointFont(90, _T("Segoe UI"));
-	CFont* pOldFont = pDC->SelectObject(&font);
+	// 폰트는 DrawContent 에서 이미 선택됨(카드마다 재생성하지 않음)
 
 	// 1) 원본 썸네일
 	int x = cardRc.left + kPad;
@@ -379,6 +384,4 @@ void CResultCardCtrl::DrawCard(CDC* pDC, const CRect& cardRc, int resultIdx, boo
 	pDC->FillSolidRect(badgeRc, badge);
 	pDC->SetTextColor(RGB(20, 20, 20));
 	pDC->DrawText(code, &badgeRc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
-	pDC->SelectObject(pOldFont);
 }

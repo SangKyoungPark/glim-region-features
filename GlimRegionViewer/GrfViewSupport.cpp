@@ -244,17 +244,26 @@ void AnalyzeFiles(const std::vector<std::string>& files,
 		}
 	};
 
-	if (workers <= 1)
+	// 현재 스레드도 워커로 참여하므로 추가 스레드는 workers-1 개.
+	//  스레드 생성이 도중 실패(std::system_error)해도 이미 만든 스레드를 join 으로
+	//  정리하고 남은 인덱스는 현재 스레드가 마저 처리한다(joinable thread 소멸→terminate 방지).
+	std::vector<std::thread> pool;
+	try
 	{
-		worker();
-	}
-	else
-	{
-		std::vector<std::thread> pool;
-		pool.reserve(workers);
-		for (int t = 0; t < workers; ++t)
+		pool.reserve(workers > 1 ? workers - 1 : 0);
+		for (int t = 0; t < workers - 1; ++t)
 			pool.push_back(std::thread(worker));
-		for (size_t t = 0; t < pool.size(); ++t)
+	}
+	catch (...)
+	{
+		// 추가 스레드 생성 실패: 아래에서 현재 스레드가 남은 작업을 모두 드레인
+	}
+
+	worker(); // 현재 스레드 참여(정상 시 잔여 인덱스만, 실패 시 전량 처리)
+
+	for (size_t t = 0; t < pool.size(); ++t)
+	{
+		if (pool[t].joinable())
 			pool[t].join();
 	}
 

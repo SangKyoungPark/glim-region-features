@@ -616,6 +616,9 @@ void CGlimRegionViewerDlg::LoadFolder(const CString& dir)
 	{
 		m_listFiles.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
 		m_listFiles.SetFocus();
+		// 선택 알림 미발생 대비 명시적 로드(중복돼도 idempotent)
+		LoadImageAt(0);
+		UpdatePreview();
 	}
 	else
 	{
@@ -906,6 +909,9 @@ void CGlimRegionViewerDlg::OnBnClickedOpenImage()
 	m_files.push_back(ToStd(dlg.GetPathName()));
 	m_listFiles.InsertItem(0, dlg.GetFileName());
 	m_listFiles.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+	// 선택 알림(LVN_ITEMCHANGED) 미발생 대비 명시적 로드(중복돼도 idempotent)
+	LoadImageAt(0);
+	UpdatePreview();
 }
 
 void CGlimRegionViewerDlg::OnBnClickedOpenFolder()
