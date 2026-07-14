@@ -426,9 +426,13 @@ def api_preview(
     kernel: int = 15,
     blur: int = 31,
     response: int = 4,
+    blackTh: int = 20,
+    whiteTh: int = 235,
+    projKernel: int = 3,
     binarize: str = "",
 ):
-    """선택 1장의 이진화 결과 PNG 를 반환. 실제 배치와 동일하도록 exe --preview 재사용."""
+    """선택 1장의 이진화 결과 PNG 를 반환. 실제 배치와 동일하도록 exe --preview 재사용.
+    projection 이면 exe 가 흑|백 2채널을 가로로 이어붙인 1장을 반환(프론트에서 좌/우 분할)."""
     folder = (folder or "").strip().strip('"')
     if not folder or not os.path.isdir(folder):
         return JSONResponse({"error": f"폴더를 찾을 수 없습니다: {folder}"}, status_code=400)
@@ -444,7 +448,8 @@ def api_preview(
         return JSONResponse({"error": "GlimRegionBatch.exe 를 찾을 수 없습니다."}, status_code=500)
 
     bin_flags, bin_label = build_binarize(polarity, mode, thresh, offset, legacy_key=binarize,
-        kernel=kernel, response=response, blur=blur)
+        kernel=kernel, response=response, blur=blur,
+        black_th=blackTh, white_th=whiteTh, proj_kernel=projKernel)
 
     # 미리보기 출력 캐시 파일(파라미터+파일 해시). 매번 덮어써도 무방하나 해시로 경합 회피.
     prev_dir = os.path.join(config.CACHE_DIR, "preview")
@@ -475,6 +480,7 @@ def api_preview(
     return FileResponse(out_png, media_type="image/png", headers={
         "Cache-Control": "no-store, must-revalidate",
         "X-Binarize-Label": bin_label,
+        "X-Projection": "1" if ("--proj" in bin_flags) else "0",
     })
 
 
