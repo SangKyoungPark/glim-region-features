@@ -106,6 +106,11 @@
     <ClInclude Include="resource.h" />
     <ClInclude Include="GlimRegionViewer.h" />
     <ClInclude Include="GlimRegionViewerDlg.h" />
+    <ClInclude Include="GrfViewSupport.h" />
+    <ClInclude Include="PreviewPanelCtrl.h" />
+    <ClInclude Include="ResultCardCtrl.h" />
+    <ClInclude Include="ChartPanelCtrl.h" />
+    <ClInclude Include="ImageViewCtrl.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -114,6 +119,11 @@
     </ClCompile>
     <ClCompile Include="GlimRegionViewer.cpp" />
     <ClCompile Include="GlimRegionViewerDlg.cpp" />
+    <ClCompile Include="GrfViewSupport.cpp" />
+    <ClCompile Include="PreviewPanelCtrl.cpp" />
+    <ClCompile Include="ResultCardCtrl.cpp" />
+    <ClCompile Include="ChartPanelCtrl.cpp" />
+    <ClCompile Include="ImageViewCtrl.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="GlimRegionViewer.rc" />
