@@ -68,6 +68,11 @@ function readSettings() {
     kernel: parseInt(el("kernel").value, 10),
     blur: parseInt(el("blur").value, 10),
     response: parseInt(el("response").value, 10),
+    blackTh: parseInt(el("blackTh").value, 10),
+    whiteTh: parseInt(el("whiteTh").value, 10),
+    projKernel: parseInt(el("projKernel").value, 10),
+    scaleX: parseFloat(el("scaleX").value),
+    scaleY: parseFloat(el("scaleY").value),
   };
 }
 function applySettings(s) {
@@ -82,16 +87,27 @@ function applySettings(s) {
   if (s.kernel !== undefined && !Number.isNaN(s.kernel)) el("kernel").value = s.kernel;
   if (s.blur !== undefined && !Number.isNaN(s.blur)) el("blur").value = s.blur;
   if (s.response !== undefined && !Number.isNaN(s.response)) el("response").value = s.response;
+  if (s.blackTh !== undefined && !Number.isNaN(s.blackTh)) el("blackTh").value = s.blackTh;
+  if (s.whiteTh !== undefined && !Number.isNaN(s.whiteTh)) el("whiteTh").value = s.whiteTh;
+  if (s.projKernel !== undefined && !Number.isNaN(s.projKernel)) el("projKernel").value = s.projKernel;
+  if (s.scaleX !== undefined && !Number.isNaN(s.scaleX)) el("scaleX").value = s.scaleX;
+  if (s.scaleY !== undefined && !Number.isNaN(s.scaleY)) el("scaleY").value = s.scaleY;
   syncBinFields();
 }
-// 방식에 따라 TH/offset/커널/누적/응답 입력 노출 토글
+// 방식에 따라 TH/offset/커널/누적/응답/흑백TH 입력 노출 토글
 function syncBinFields() {
   const mode = el("mode").value;
+  const isProj = (mode === "projection");
   el("threshField").style.display = (mode === "fixed") ? "" : "none";
   el("offsetField").style.display = (mode === "auto") ? "" : "none";
   el("kernelField").style.display = (mode === "wrinkle") ? "" : "none";
   el("blurField").style.display = (mode === "wrinkle") ? "" : "none";
   el("responseField").style.display = (mode === "wrinkle") ? "" : "none";
+  el("blackThField").style.display = isProj ? "" : "none";
+  el("whiteThField").style.display = isProj ? "" : "none";
+  el("projKernelField").style.display = isProj ? "" : "none";
+  // projection 은 흑/백 2채널 동시 산출이라 극성 무의미 → 극성 입력 숨김
+  el("polarityField").style.display = isProj ? "none" : "";
 }
 
 // ---------- 최근 실행 기록 (localStorage) ----------
@@ -110,7 +126,7 @@ function pushRecent(settings, meta) {
     totalImages: meta.totalImages,
   });
   // 같은 폴더+이진화 조합은 최신으로 갱신(중복 제거)
-  const key = e => `${e.folderPath}|${e.profile}|${e.polarity}|${e.mode}|${e.thresh}|${e.offset}`;
+  const key = e => `${e.folderPath}|${e.profile}|${e.polarity}|${e.mode}|${e.thresh}|${e.offset}|${e.blackTh}|${e.whiteTh}|${e.scaleX}|${e.scaleY}`;
   const filtered = list.filter(e => key(e) !== key(entry));
   filtered.unshift(entry);
   saveRecent(filtered);
@@ -124,12 +140,15 @@ function renderRecent() {
     const ts = `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`;
     const binDesc = e.mode === "binary" ? `${e.polarity}·binary`
       : e.mode === "wrinkle" ? `wrinkle(k ${e.kernel}/b ${e.blur}/r ${e.response})`
+      : e.mode === "projection" ? `projection(흑 ${e.blackTh}/백 ${e.whiteTh})`
       : e.mode === "auto" ? `${e.polarity}·auto(off ${e.offset})`
         : `${e.polarity}·fixed(TH ${e.thresh})`;
+    const scaleDesc = (e.scaleX && e.scaleX !== 1) || (e.scaleY && e.scaleY !== 1)
+      ? ` · scale ${e.scaleX}×${e.scaleY}` : "";
     return `<div class="recent-item" data-idx="${i}">
       <div class="ri-main">
         <div class="ri-folder">${esc(e.folderPath || "(경로 없음)")}</div>
-        <div class="ri-meta">${esc(e.profile)} · ${esc(binDesc)} · Region ${e.totalRegions ?? "-"} · 이미지 ${e.totalImages ?? "-"}</div>
+        <div class="ri-meta">${esc(e.profile)} · ${esc(binDesc)}${esc(scaleDesc)} · Region ${e.totalRegions ?? "-"} · 이미지 ${e.totalImages ?? "-"}</div>
       </div>
       <div class="ri-time">${ts}</div>
     </div>`;

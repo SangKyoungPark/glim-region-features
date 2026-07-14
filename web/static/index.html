@@ -71,7 +71,7 @@
 
         <h2 style="margin-top:18px">이진화</h2>
         <div class="field-row">
-          <div class="field">
+          <div class="field" id="polarityField">
             <label for="polarity">극성</label>
             <select id="polarity">
               <option value="bright">Bright (밝은 쪽=Region)</option>
@@ -85,6 +85,7 @@
               <option value="auto" selected>자동 (배경평균±offset)</option>
               <option value="binary">Binary (이미 이진화됨)</option>
               <option value="wrinkle">Wrinkle (주름)</option>
+              <option value="projection">Projection (검사기 방식)</option>
             </select>
           </div>
         </div>
@@ -109,6 +110,30 @@
             <label for="response">주름 응답 임계값</label>
             <input id="response" type="number" min="0" value="4">
           </div>
+          <div class="field" id="blackThField">
+            <label for="blackTh">흑 TH (어두움)</label>
+            <input id="blackTh" type="number" min="0" max="255" value="20">
+          </div>
+          <div class="field" id="whiteThField">
+            <label for="whiteTh">백 TH (밝음)</label>
+            <input id="whiteTh" type="number" min="0" max="255" value="235">
+          </div>
+          <div class="field" id="projKernelField">
+            <label for="projKernel">모폴로지 커널 (0=미사용)</label>
+            <input id="projKernel" type="number" min="0" value="3">
+          </div>
+        </div>
+
+        <h2 style="margin-top:18px">픽셀→mm 스케일 <small style="font-weight:400;color:#9aa3b2">(1.0=미환산, 공통)</small></h2>
+        <div class="field-row">
+          <div class="field">
+            <label for="scaleX">X Scale (mm/px)</label>
+            <input id="scaleX" type="number" min="0" step="0.0001" value="1.0">
+          </div>
+          <div class="field">
+            <label for="scaleY">Y Scale (mm/px)</label>
+            <input id="scaleY" type="number" min="0" step="0.0001" value="1.0">
+          </div>
         </div>
 
         <div class="run-actions">
@@ -122,7 +147,7 @@
           <h2>이진화 미리보기</h2>
           <button id="previewBtn" class="ghost-btn">미리보기 불러오기</button>
         </div>
-        <p class="hint">폴더 앞쪽 이미지 몇 장 중 1장을 골라 원본 | 이진화 결과를 비교합니다. 방식/TH/offset 변경 시 즉시 갱신됩니다.</p>
+        <p class="hint">폴더 앞쪽 이미지 몇 장 중 1장을 골라 원본 | 이진화 결과를 비교합니다. 방식/TH/offset 변경 시 즉시 갱신됩니다. Projection 은 원본 | 흑 이진화 | 백 이진화 3단으로 표시됩니다.</p>
         <div id="previewFiles" class="preview-files"></div>
         <div id="previewPane" class="preview-pane">
           <div class="empty">미리보기를 불러오세요.</div>

@@ -52,12 +52,17 @@ class RunRequest(BaseModel):
     threads: int = 0             # 0 = 자동
     # 이진화(granular). mode 비면 legacy binarize 키로 폴백.
     polarity: str = "bright"     # bright | dark
-    mode: str = ""               # fixed | auto | binary | wrinkle | ""(legacy)
+    mode: str = ""               # fixed | auto | binary | wrinkle | projection | ""(legacy)
     thresh: int = 127            # fixed 용 (0~255)
     offset: int = 20             # auto 용
     kernel: int = 15             # wrinkle 용 (BLACKHAT 수평 RECT 커널 폭)
     blur: int = 31               # wrinkle 용 (세로 누적 blur 길이)
     response: int = 4            # wrinkle 용 (누적 응답 임계값)
+    blackTh: int = 20            # projection 용 (흑=어두움 임계값)
+    whiteTh: int = 235           # projection 용 (백=밝음 임계값)
+    projKernel: int = 3          # projection 용 (모폴로지 커널, 0=미사용)
+    scaleX: float = 1.0          # 픽셀→mm 환산 X (공통, 1.0=미환산)
+    scaleY: float = 1.0          # 픽셀→mm 환산 Y (공통, 1.0=미환산)
     binarize: str = "bright127"  # legacy: bright127 | dark127 | darkauto | brightauto | binary
 
 
@@ -75,7 +80,29 @@ def _list_images(folder, n=None):
     return names[:n] if n else names
 
 
-def build_binarize(polarity, mode, thresh, offset, legacy_key=None, kernel=15, response=4, blur=31):
+# exe usage 문자열 캐시 → 신규 플래그(--dumpbin/--scale-x 등) 지원 여부 판별.
+# 엔진 병행 작업이 아직 미반영이면 해당 플래그는 전달하지 않고 무해하게 폴백한다.
+_EXE_CAPS = {}
+
+
+def exe_supports(exe, flag):
+    """exe 인자 없이 실행 → usage 출력에 flag 문자열이 있으면 지원으로 간주(결과 캐시)."""
+    caps = _EXE_CAPS.get(exe)
+    if caps is None:
+        caps = ""
+        try:
+            env = dict(os.environ)
+            env["PATH"] = config.OPENCV_BIN + os.pathsep + env.get("PATH", "")
+            p = subprocess.run([exe], env=env, capture_output=True, text=True, timeout=15)
+            caps = (p.stdout or "") + (p.stderr or "")
+        except Exception:
+            caps = ""
+        _EXE_CAPS[exe] = caps
+    return flag in caps
+
+
+def build_binarize(polarity, mode, thresh, offset, legacy_key=None, kernel=15, response=4, blur=31,
+                   black_th=20, white_th=235, proj_kernel=3):
     """granular 파라미터 → GlimRegionBatch CLI 플래그 + 캐시 라벨. mode 비면 legacy 키 폴백."""
     polarity = (polarity or "").lower()
     mode = (mode or "").lower()
@@ -99,8 +126,20 @@ def build_binarize(polarity, mode, thresh, offset, legacy_key=None, kernel=15, r
         blur = int(blur)
     except (TypeError, ValueError):
         blur = 31
+    try:
+        black_th = int(black_th)
+    except (TypeError, ValueError):
+        black_th = 20
+    try:
+        white_th = int(white_th)
+    except (TypeError, ValueError):
+        white_th = 235
+    try:
+        proj_kernel = int(proj_kernel)
+    except (TypeError, ValueError):
+        proj_kernel = 3
 
-    if mode not in ("fixed", "auto", "binary", "wrinkle"):
+    if mode not in ("fixed", "auto", "binary", "wrinkle", "projection"):
         lk = (legacy_key or "bright127").lower()
         if lk == "dark127":
             polarity, mode, thresh = "dark", "fixed", 127
@@ -115,6 +154,15 @@ def build_binarize(polarity, mode, thresh, offset, legacy_key=None, kernel=15, r
 
     if polarity not in ("bright", "dark"):
         polarity = "bright"
+
+    # PROJECTION 은 극성과 무관(흑/백 2채널 동시 산출). 검사기 동일 이진화.
+    if mode == "projection":
+        flags = ["--proj", "--black-th", str(black_th), "--white-th", str(white_th)]
+        label = "proj-b%d-w%d" % (black_th, white_th)
+        if proj_kernel and proj_kernel > 0:
+            flags += ["--proj-kernel", str(proj_kernel)]
+            label += "-k%d" % proj_kernel
+        return flags, label
 
     # WRINKLE 은 극성과 무관(항상 어두운 선 검출). 별도 플래그 세트로 구성.
     if mode == "wrinkle":
@@ -268,13 +316,30 @@ def api_run(req: RunRequest):
     # 이진화 플래그 + 캐시 라벨(granular 우선, mode 비면 legacy binarize 폴백)
     bin_flags, bin_label = build_binarize(
         req.polarity, req.mode, req.thresh, req.offset, legacy_key=req.binarize,
-        kernel=req.kernel, response=req.response, blur=req.blur)
+        kernel=req.kernel, response=req.response, blur=req.blur,
+        black_th=req.blackTh, white_th=req.whiteTh, proj_kernel=req.projKernel)
 
-    # 실행 캐시 폴더 = 해시(폴더+프로파일+이진화)
-    key = "%s|%s|%s" % (_norm(folder), profile_key, bin_label)
+    is_proj = "--proj" in bin_flags
+
+    # 픽셀→mm 스케일(공통). 1.0 이 아니고 exe 가 지원할 때만 전달(라벨에도 반영해 캐시 분리).
+    scale_flags = []
+    scale_label = ""
+    try:
+        sx = float(req.scaleX)
+        sy = float(req.scaleY)
+    except (TypeError, ValueError):
+        sx, sy = 1.0, 1.0
+    scale_on = (abs(sx - 1.0) > 1e-9 or abs(sy - 1.0) > 1e-9)
+    if scale_on and exe_supports(exe, "--scale-x"):
+        scale_flags = ["--scale-x", ("%g" % sx), "--scale-y", ("%g" % sy)]
+        scale_label = "-sx%g-sy%g" % (sx, sy)
+
+    # 실행 캐시 폴더 = 해시(폴더+프로파일+이진화+스케일)
+    key = "%s|%s|%s%s" % (_norm(folder), profile_key, bin_label, scale_label)
     h = hashlib.md5(key.encode("utf-8")).hexdigest()[:16]
     out_dir = os.path.join(config.CACHE_DIR, h)
     overlay_dir = os.path.join(out_dir, "overlay")
+    bin_dir = os.path.join(out_dir, "bin")
     os.makedirs(overlay_dir, exist_ok=True)
     csv_path = os.path.join(out_dir, "result.csv")
 
