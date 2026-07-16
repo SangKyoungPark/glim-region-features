@@ -10,6 +10,7 @@ const state = {
   sortDir: "desc",
   previewFiles: [],
   previewSel: null,   // 선택된 미리보기 파일명
+  presets: [],        // 서버 저장 프리셋 목록
 };
 
 const RECENT_KEY = "glimregion.recent.v1";
@@ -29,7 +30,30 @@ function fmt(v, d = 3) {
 function esc(s) {
   return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 }
-function setStatus(s) { el("runStatus").textContent = s; }
+// 상태 표시. kind: "" | "busy"(스피너) | "error"(빨강)
+function setStatus(s, kind = "") {
+  const node = el("runStatus");
+  node.textContent = s;
+  node.classList.toggle("busy", kind === "busy");
+  node.classList.toggle("error", kind === "error");
+}
+
+// 전역 토스트(사용자 메시지). kind: "error" | "success" | ""
+let _toastTimer = null;
+function toast(msg, kind = "", ms = 3800) {
+  const node = el("toast");
+  if (!node) return;
+  node.textContent = msg;
+  node.className = "toast " + (kind || "");
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => node.classList.add("hidden"), ms);
+}
+// 에러를 상태바 + 토스트 + 콘솔에 일관 표시(콘솔만 찍고 끝나지 않게)
+function showError(msg) {
+  console.error("[GlimRegion]", msg);
+  setStatus("오류: " + msg, "error");
+  toast(msg, "error", 5000);
+}
 
 // 분류코드 → 고정색 (해시 기반, 중립코드는 회색). 분포차트/뱃지/필터/히스토그램 공유.
 function codeColor(code) {
@@ -132,6 +156,81 @@ function syncBinFields() {
   el("polarityField").style.display = isProj ? "none" : "";
 }
 
+// ---------- 설정 프리셋 (서버 web/presets.json) ----------
+async function loadPresets(selectName) {
+  try {
+    const res = await fetch("/api/presets");
+    const data = await res.json();
+    if (!data.ok) { showError(data.error || "프리셋 목록 로딩 실패"); return; }
+    state.presets = data.presets || [];
+    renderPresetSelect(selectName);
+  } catch (e) {
+    showError("프리셋 목록 요청 실패: " + e);
+  }
+}
+function renderPresetSelect(selectName) {
+  const sel = el("presetSelect");
+  if (!sel) return;
+  let html = '<option value="">— 프리셋 선택 —</option>';
+  state.presets.forEach(p => {
+    const tag = p.builtin ? " ★" : "";
+    html += `<option value="${esc(p.name)}">${esc(p.name)}${tag}</option>`;
+  });
+  sel.innerHTML = html;
+  if (selectName) sel.value = selectName;
+}
+function applyPresetByName(name) {
+  if (!name) return;
+  const p = state.presets.find(x => x.name === name);
+  if (!p) { showError("프리셋을 찾을 수 없습니다: " + name); return; }
+  // 폴더 경로는 프리셋에 비어 있으면 현재 입력을 보존(불필요하게 지우지 않음)
+  const s = Object.assign({}, p.settings);
+  if (s.folderPath === undefined || s.folderPath === "") delete s.folderPath;
+  applySettings(s);
+  setStatus(`프리셋 '${name}' 적용됨`);
+}
+async function savePresetPrompt() {
+  const sel = el("presetSelect");
+  const suggested = (sel && sel.value) ? sel.value : "";
+  const name = (window.prompt("저장할 프리셋 이름", suggested) || "").trim();
+  if (!name) return;
+  const settings = readSettings();
+  try {
+    const res = await fetch("/api/presets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, settings }),
+    });
+    const data = await res.json();
+    if (!data.ok) { showError(data.error || "프리셋 저장 실패"); return; }
+    state.presets = data.presets || [];
+    renderPresetSelect(name);
+    toast(`프리셋 '${name}' 저장됨`, "success");
+    setStatus(`프리셋 '${name}' 저장됨`);
+  } catch (e) {
+    showError("프리셋 저장 요청 실패: " + e);
+  }
+}
+async function deletePreset() {
+  const sel = el("presetSelect");
+  const name = sel ? sel.value : "";
+  if (!name) { toast("삭제할 프리셋을 선택하세요.", "error"); return; }
+  const p = state.presets.find(x => x.name === name);
+  if (p && p.builtin) { toast("기본 제공 프리셋은 삭제할 수 없습니다.", "error"); return; }
+  if (!window.confirm(`프리셋 '${name}' 을(를) 삭제할까요?`)) return;
+  try {
+    const res = await fetch("/api/presets?name=" + encodeURIComponent(name), { method: "DELETE" });
+    const data = await res.json();
+    if (!data.ok) { showError(data.error || "프리셋 삭제 실패"); return; }
+    state.presets = data.presets || [];
+    renderPresetSelect("");
+    toast(`프리셋 '${name}' 삭제됨`, "success");
+    setStatus(`프리셋 '${name}' 삭제됨`);
+  } catch (e) {
+    showError("프리셋 삭제 요청 실패: " + e);
+  }
+}
+
 // ---------- 최근 실행 기록 (localStorage) ----------
 function loadRecent() {
   try { return JSON.parse(localStorage.getItem(RECENT_KEY) || "[]"); }
@@ -190,19 +289,20 @@ function renderRecent() {
 // ---------- 미리보기 ----------
 async function loadPreviewFiles() {
   const folder = el("folderPath").value.trim();
-  if (!folder) { setStatus("폴더 경로를 입력하세요."); return; }
-  setStatus("미리보기 목록 로딩...");
+  if (!folder) { toast("폴더 경로를 입력하세요.", "error"); setStatus("폴더 경로를 입력하세요.", "error"); return; }
+  setStatus("미리보기 목록 로딩...", "busy");
   try {
     const res = await fetch("/api/files?folder=" + encodeURIComponent(folder) + "&n=5");
     const data = await res.json();
-    if (!data.ok) { setStatus("오류: " + (data.error || res.status)); return; }
+    if (!data.ok) { showError(data.error || `미리보기 목록 실패 (HTTP ${res.status})`); return; }
     state.previewFiles = data.files || [];
     state.previewSel = state.previewFiles.length ? state.previewFiles[0] : null;
     renderPreviewFiles();
     updatePreview();
-    setStatus(`미리보기 파일 ${state.previewFiles.length}개`);
+    if (!state.previewFiles.length) { setStatus("폴더에 이미지가 없습니다.", "error"); toast("폴더에 이미지가 없습니다.", "error"); }
+    else setStatus(`미리보기 파일 ${state.previewFiles.length}개`);
   } catch (e) {
-    setStatus("미리보기 요청 실패: " + e);
+    showError("미리보기 요청 실패: " + e);
   }
 }
 function renderPreviewFiles() {
@@ -293,30 +393,66 @@ function loadProjectionPreview(binUrl, blackTh, whiteTh) {
 // ---------- 실행 ----------
 async function runAnalysis() {
   const body = readSettings();
-  if (!body.folderPath) { setStatus("폴더 경로를 입력하세요."); showTab("settings"); return; }
+  if (!body.folderPath) {
+    toast("폴더 경로를 입력하세요.", "error");
+    setStatus("폴더 경로를 입력하세요.", "error");
+    showTab("settings");
+    el("folderPath").focus();
+    return;
+  }
 
   el("runBtn").disabled = true;
-  setStatus("실행 중...");
+  el("runBtn").textContent = "실행 중...";
+  setStatus("분석 실행 중... (exe 처리 대기)", "busy");
   try {
     const res = await fetch("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const data = await res.json();
-    if (!data.ok) { setStatus("오류: " + (data.error || res.status)); return; }
+    let data;
+    try { data = await res.json(); }
+    catch (e) { showError(`서버 응답 파싱 실패 (HTTP ${res.status})`); return; }
+    if (!data.ok) {
+      // exe 실패 상세(stderr)가 있으면 콘솔에 남기고 사용자에겐 요약 메시지
+      if (data.stderr) console.error("[GlimRegion] exe stderr:\n" + data.stderr);
+      showError(data.error || `분석 실패 (HTTP ${res.status})`);
+      return;
+    }
     state.data = data;
     state.activeCode = null;
     state.activeChannel = null;
     pushRecent(body, data.summary);
     render();
+    updateCsvButton();
     showTab("results");
     setStatus(`완료 · ${data.summary.totalRegions} Region · ${data.summary.elapsedMs} ms`);
+    toast(`분석 완료 · ${data.summary.totalRegions} Region`, "success");
   } catch (e) {
-    setStatus("요청 실패: " + e);
+    showError("요청 실패: " + e + " (서버가 실행 중인지 확인하세요)");
   } finally {
     el("runBtn").disabled = false;
+    el("runBtn").textContent = "분석 실행";
   }
+}
+
+// CSV 다운로드 버튼 상태 갱신(실행 결과 있을 때만 활성)
+function updateCsvButton() {
+  const btn = el("csvDownloadBtn");
+  if (!btn) return;
+  btn.disabled = !(state.data && state.data.hash);
+}
+function downloadCsv() {
+  if (!state.data || !state.data.hash) { toast("다운로드할 결과가 없습니다.", "error"); return; }
+  // 서버가 캐시의 result.csv 를 그대로 반환(Content-Disposition 파일명 포함)
+  const url = "/api/download?hash=" + encodeURIComponent(state.data.hash);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setStatus("CSV 다운로드 요청됨");
 }
 
 // ---------- 렌더 ----------
@@ -669,6 +805,14 @@ el("whiteTh").addEventListener("input", updatePreview);
 el("projKernel").addEventListener("input", updatePreview);
 el("clearRecent").addEventListener("click", () => { saveRecent([]); renderRecent(); });
 
+// 프리셋: 콤보 선택 시 즉시 적용, 저장/삭제 버튼
+el("presetSelect").addEventListener("change", e => applyPresetByName(e.target.value));
+el("presetSaveBtn").addEventListener("click", savePresetPrompt);
+el("presetDeleteBtn").addEventListener("click", deletePreset);
+
+// 결과 탭 CSV 다운로드
+el("csvDownloadBtn").addEventListener("click", downloadCsv);
+
 el("histFeature").addEventListener("change", () => { if (state.data) renderHistogram(); });
 el("sortKey").addEventListener("change", e => { state.sortKey = e.target.value; if (state.data) renderGallery(); });
 el("sortDir").addEventListener("click", () => {
@@ -683,3 +827,5 @@ el("detailOverlay").addEventListener("click", e => { if (e.target === el("detail
 // 초기화
 syncBinFields();
 renderRecent();
+updateCsvButton();
+loadPresets();
