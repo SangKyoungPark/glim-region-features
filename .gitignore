@@ -19,6 +19,7 @@ ipch/
 # Web dashboard runtime
 web/.venv/
 web/cache/
+web/presets.json
 __pycache__/
 *.pyc
 .claude/
