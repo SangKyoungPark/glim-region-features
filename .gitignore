@@ -16,6 +16,12 @@ ipch/
 # Generated CSV output (test runs)
 *.csv
 
+# Deployment output (make_deploy.bat)
+deploy/
+
+# Runtime settings written next to the exe
+GlimRegionViewer.ini
+
 # Web dashboard runtime
 web/.venv/
 web/cache/

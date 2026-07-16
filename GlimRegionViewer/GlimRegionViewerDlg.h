@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <string>
+#include <thread>
 #include <opencv2/core.hpp>
 #include "resource.h"
 #include "GlimRegionFeatures.h"
@@ -29,6 +30,8 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);
 	virtual BOOL OnInitDialog();
 
+	afx_msg void OnDestroy();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 	afx_msg void OnBnClickedOpenImage();
 	afx_msg void OnBnClickedOpenFolder();
 	afx_msg void OnBnClickedExportCsv();
@@ -70,6 +73,16 @@ private:
 	void UpdateHomeSummary();
 	void LoadProfileSelection();
 	void RefreshDetailView();      // 상세 이미지 뷰 갱신(오버레이 반영)
+	void FinalizeAnalysis();       // 워커 스레드 분석 완료 후 결과/차트/홈/타이틀 반영
+
+	void SetAnalysisUIEnabled(bool enabled); // 분석 중 관련 컨트롤 잠금/해제
+
+	// --- 설정 영속화(INI) ---
+	void ResolveIniPath();             // 쓰기 가능 INI 경로 결정(exe 옆 우선, 불가 시 %APPDATA%)
+	CString SettingsIniPath() const;   // 결정된 INI 경로
+	void LoadSettings();               // 시작 시 복원(부재/손상 시 기본값)
+	void SaveSettings();               // 종료 시 저장
+	void UpdateWindowTitle();          // 타이틀바 버전 + 분석 상태 반영
 
 	// --- 렌더링(결과 탭 상세 이미지) ---
 	cv::Mat BuildOverlayMat();
@@ -123,7 +136,8 @@ private:
 	Grf::BinarizeParams m_analysisParams; // RunAnalysis 시점 파라미터 스냅샷(카드 클릭 재분석에 재사용)
 	bool m_hasAnalysisParams;           // 스냅샷 유효 여부
 
-	std::vector<GrfView::RegionResult> m_results; // 폴더 전체 분석 결과(카드/차트/홈)
+	std::vector<GrfView::RegionResult> m_results;        // 폴더 전체 분석 결과(카드/차트/홈) — UI 스레드 전용
+	std::vector<GrfView::RegionResult> m_pendingResults; // 워커 스레드 전용 출력 버퍼(완료 후 swap → m_results)
 	GrfView::ThumbCache m_thumbCache;
 
 	Grf::ProfileLoader m_profile;
@@ -141,4 +155,14 @@ private:
 
 	CRect m_imgFrameRect;    // 결과 탭 상세 이미지 영역
 	HICON m_hIcon;
+
+	// --- 분석 진행 표시(워커 스레드 + 타이머 폴링) ---
+	std::thread m_analysisThread;     // 폴더 분석 워커
+	volatile long m_progress;         // 완료 파일 수(InterlockedIncrement, UI는 읽기만)
+	volatile bool m_analysisDone;     // 워커 완료 플래그
+	volatile bool m_analysisFailed;   // 워커 예외 플래그
+	bool m_analyzing;                 // 분석 진행 중(재진입 방지, UI 스레드 전용)
+	int m_analysisTotal;              // 전체 파일 수(진행률 표시)
+
+	CString m_iniPath;                // 결정된 설정 파일 경로(ResolveIniPath)
 };

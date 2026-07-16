@@ -8,11 +8,28 @@
 
 #include <algorithm>
 #include <map>
+#include <climits>    // INT_MIN
 #include <shlobj.h>   // SHBrowseForFolder
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
+
+// ------------------------------------------------------------------
+// 애플리케이션 버전 / 타이틀 / INI
+//  버전업 시 아래 3곳을 함께 갱신할 것:
+//   1) 이 매크로(GRV_APP_VERSION)  2) GlimRegionViewer.rc 의 VS_VERSION_INFO
+//   3) build\make_deploy.bat 의 VERSION
+// ------------------------------------------------------------------
+#define GRV_APP_VERSION   _T("1.0.0")
+#define GRV_APP_TITLE     _T("Glim Region Viewer")
+
+namespace {
+	const UINT_PTR kTimerProgress = 1001;   // 분석 진행 폴링 타이머
+	const int      kProgressPollMs = 120;
+	LPCTSTR kIniSection    = _T("Viewer");
+	LPCTSTR kIniSectionWin = _T("Window");
+}
 
 // ------------------------------------------------------------------
 // 레이아웃 상수(픽셀). 클라이언트 1180 x 780 기준.
@@ -66,6 +83,11 @@ CGlimRegionViewerDlg::CGlimRegionViewerDlg(CWnd* pParent /*=NULL*/)
 	, m_zoom(4)
 	, m_showOverlay(true)
 	, m_highlightRegion(-1)
+	, m_progress(0)
+	, m_analysisDone(false)
+	, m_analysisFailed(false)
+	, m_analyzing(false)
+	, m_analysisTotal(0)
 {
 	m_hIcon = AfxGetApp()->LoadStandardIcon(IDI_APPLICATION);
 	// 결과 탭 상세 이미지 영역(좌:카드 / 우:상세)
@@ -101,6 +123,8 @@ BEGIN_MESSAGE_MAP(CGlimRegionViewerDlg, CDialogEx)
 	ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST_FEATURES, &CGlimRegionViewerDlg::OnFeatureListItemChanged)
 	ON_NOTIFY(TCN_SELCHANGE, IDC_TAB_MAIN, &CGlimRegionViewerDlg::OnTabSelChange)
 	ON_MESSAGE(WM_GRFVIEW_CARD_SEL, &CGlimRegionViewerDlg::OnCardSelected)
+	ON_WM_DESTROY()
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 // ------------------------------------------------------------------
@@ -134,6 +158,18 @@ BOOL CGlimRegionViewerDlg::OnInitDialog()
 		SetStatus(_T("초기화 중 오류가 발생했습니다."));
 	}
 
+	// INI 복원(부재/손상 시 기본값 유지). 창 위치/크기까지 복원.
+	try
+	{
+		ResolveIniPath();
+		LoadSettings();
+	}
+	catch (...)
+	{
+		SetStatus(_T("설정 복원 중 오류(기본값으로 계속)."));
+	}
+
+	UpdateWindowTitle();
 	SetStatus(_T("Ready. [설정] 탭에서 폴더/이미지를 열고 [분석 실행] 하세요."));
 	return TRUE;
 }
@@ -669,6 +705,7 @@ void CGlimRegionViewerDlg::LoadFolder(const CString& dir)
 	CString msg;
 	msg.Format(_T("%d image(s) in folder."), static_cast<int>(m_files.size()));
 	SetStatus(msg);
+	UpdateWindowTitle();
 
 	if (!m_files.empty())
 	{
@@ -877,35 +914,103 @@ void CGlimRegionViewerDlg::UpdatePreview()
 
 void CGlimRegionViewerDlg::RunAnalysis()
 {
+	if (m_analyzing)
+		return; // 재진입 방지(버튼도 비활성이지만 방어적)
+
 	if (m_files.empty())
 	{
 		AfxMessageBox(_T("먼저 [Open Image] 또는 [Open Folder] 로 이미지를 여세요."));
 		return;
 	}
 
-	CWaitCursor wait;
-	SetStatus(_T("분석 중..."));
-
-	const int threads = GetEditInt(IDC_EDIT_THREADS, 0);
 	// 분석 파라미터 스냅샷: 이후 사용자가 UI 값을 바꿔도 카드↔상세뷰 재분석이
 	//  분석 시점과 동일한 이진화/채널 구성을 재현하도록 보관.
 	m_analysisParams = CurrentBinarizeParams();
 	m_hasAnalysisParams = true;
 	m_lastAnalysisProjection = (m_analysisParams.m_mode == Grf::BINMODE_PROJECTION); // 홈 요약 채널 카운트 노출 조건
 
-	Grf::CpuPreprocessor pre(m_analysisParams);
-	const Grf::ProfileLoader* pp = m_profileLoaded ? &m_profile : NULL;
+	const int threads = GetEditInt(IDC_EDIT_THREADS, 0);
+	m_analysisTotal = static_cast<int>(m_files.size());
+	m_progress = 0;
+	m_analysisDone = false;
+	m_analysisFailed = false;
+	m_analyzing = true;
 
+	// 진행 표시: 관련 컨트롤 비활성 + 상태 텍스트
+	SetAnalysisUIEnabled(false);
+	CString msg;
+	msg.Format(_T("0/%d 처리 중..."), m_analysisTotal);
+	SetStatus(msg);
+
+	// 워커 스레드에서 병렬 분석 실행(UI 스레드는 타이머로 진행률 폴링).
+	//  워커는 전용 출력 버퍼 m_pendingResults 와 m_progress/완료플래그만 접근한다.
+	//  m_results 는 손대지 않으므로(카드/차트가 캐시한 &m_results 를 UI 스레드가 재그려도 안전),
+	//  완료 시 FinalizeAnalysis 가 swap 으로 교체한다.
+	const Grf::ProfileLoader* pp = m_profileLoaded ? &m_profile : NULL;
+	const std::vector<std::string> files = m_files;   // 분석 중 UI가 m_files 를 바꿔도 무관하게 복사
+	const Grf::BinarizeParams params = m_analysisParams;
 	try
 	{
-		GrfView::AnalyzeFiles(m_files, pre, pp, threads, kDefaultMinArea, m_results, NULL);
+		m_analysisThread = std::thread([this, files, params, pp, threads]()
+		{
+			try
+			{
+				Grf::CpuPreprocessor pre(params);
+				GrfView::AnalyzeFiles(files, pre, pp, threads, kDefaultMinArea,
+					this->m_pendingResults, &this->m_progress);
+			}
+			catch (...)
+			{
+				this->m_analysisFailed = true;
+			}
+			this->m_analysisDone = true;
+		});
 	}
 	catch (...)
 	{
-		m_results.clear();
-		SetStatus(_T("분석 중 오류가 발생했습니다."));
+		// 스레드 생성 실패 시 동기 폴백(m_pendingResults 로 받아 swap)
+		m_analyzing = false;
+		SetAnalysisUIEnabled(true);
+		try
+		{
+			Grf::CpuPreprocessor pre(m_analysisParams);
+			GrfView::AnalyzeFiles(m_files, pre, pp, threads, kDefaultMinArea, m_pendingResults, NULL);
+			FinalizeAnalysis();
+		}
+		catch (...)
+		{
+			m_pendingResults.clear();
+			SetStatus(_T("분석 중 오류가 발생했습니다."));
+		}
 		return;
 	}
+
+	SetTimer(kTimerProgress, kProgressPollMs, NULL);
+}
+
+// 분석 진행 중 결과 정합을 해칠 수 있는 컨트롤을 잠근다(폴더/파일 열기, CSV, 프로파일, 탭 전환).
+void CGlimRegionViewerDlg::SetAnalysisUIEnabled(bool enabled)
+{
+	const UINT ids[] = {
+		IDC_BTN_ANALYZE, IDC_BTN_OPEN_IMAGE, IDC_BTN_OPEN_FOLDER,
+		IDC_BTN_EXPORT_CSV, IDC_COMBO_PROFILE, IDC_TAB_MAIN, IDC_LIST_FILES
+	};
+	for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); ++i)
+	{
+		CWnd* w = GetDlgItem(ids[i]);
+		if (w)
+			w->EnableWindow(enabled ? TRUE : FALSE);
+	}
+}
+
+// 워커 스레드 완료 후 UI 스레드에서 호출: 결과/차트/홈/타이틀 반영.
+void CGlimRegionViewerDlg::FinalizeAnalysis()
+{
+	const Grf::ProfileLoader* pp = m_profileLoaded ? &m_profile : NULL;
+
+	// 워커 전용 버퍼를 UI 스레드 소유 벡터로 교체(이 시점에는 워커가 join 됨 = 배타적 접근).
+	m_results.swap(m_pendingResults);
+	m_pendingResults.clear();
 
 	// 결과 탭 갱신
 	m_thumbCache.SetCapacity(96);
@@ -916,6 +1021,7 @@ void CGlimRegionViewerDlg::RunAnalysis()
 	m_chart.SetData(&m_results, m_profileLoaded, scoreNames);
 
 	UpdateHomeSummary();
+	UpdateWindowTitle();
 
 	CString msg;
 	msg.Format(_T("분석 완료: %d files, %d regions"),
@@ -1029,6 +1135,7 @@ void CGlimRegionViewerDlg::OnBnClickedOpenImage()
 	// 선택 알림(LVN_ITEMCHANGED) 미발생 대비 명시적 로드(중복돼도 idempotent)
 	LoadImageAt(0);
 	UpdatePreview();
+	UpdateWindowTitle();
 }
 
 void CGlimRegionViewerDlg::OnBnClickedOpenFolder()
@@ -1276,4 +1383,331 @@ LRESULT CGlimRegionViewerDlg::OnCardSelected(WPARAM wParam, LPARAM /*lParam*/)
 		RefreshDetailView();
 	}
 	return 0;
+}
+
+// ------------------------------------------------------------------
+// 분석 진행 폴링 / 종료
+// ------------------------------------------------------------------
+void CGlimRegionViewerDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	if (nIDEvent == kTimerProgress)
+	{
+		if (m_analyzing)
+		{
+			if (m_analysisDone)
+			{
+				KillTimer(kTimerProgress);
+				if (m_analysisThread.joinable())
+					m_analysisThread.join();
+				m_analyzing = false;
+
+				SetAnalysisUIEnabled(true);
+
+				if (m_analysisFailed)
+				{
+					m_pendingResults.clear();
+					SetStatus(_T("분석 중 오류가 발생했습니다."));
+				}
+				else
+				{
+					FinalizeAnalysis();
+				}
+			}
+			else
+			{
+				CString msg;
+				msg.Format(_T("%d/%d 처리 중..."),
+					static_cast<int>(m_progress), m_analysisTotal);
+				SetStatus(msg);
+			}
+		}
+		else
+		{
+			KillTimer(kTimerProgress);
+		}
+		return;
+	}
+	CDialogEx::OnTimer(nIDEvent);
+}
+
+void CGlimRegionViewerDlg::OnDestroy()
+{
+	// 진행 중 워커가 있으면 this 소멸 전에 반드시 회수(댕글링 방지).
+	KillTimer(kTimerProgress);
+	if (m_analysisThread.joinable())
+	{
+		try { m_analysisThread.join(); }
+		catch (...) {}
+	}
+	m_analyzing = false;
+
+	// 종료 시 설정 저장(창 위치/크기 포함 — 파괴 전이라 유효).
+	try { SaveSettings(); }
+	catch (...) {}
+
+	CDialogEx::OnDestroy();
+}
+
+// ------------------------------------------------------------------
+// 타이틀바(버전 + 분석 상태)
+// ------------------------------------------------------------------
+void CGlimRegionViewerDlg::UpdateWindowTitle()
+{
+	CString title;
+	title.Format(_T("%s v%s"), GRV_APP_TITLE, GRV_APP_VERSION);
+
+	if (!m_files.empty())
+	{
+		std::string first = m_files[0];
+		size_t sl = first.find_last_of("\\/");
+		CString folder = ToCStr(sl != std::string::npos ? first.substr(0, sl) : first);
+		// 폴더명만(마지막 세그먼트) 짧게
+		int p = folder.ReverseFind(_T('\\'));
+		CString leaf = (p >= 0) ? folder.Mid(p + 1) : folder;
+		if (leaf.IsEmpty())
+			leaf = folder;
+
+		CString ext;
+		if (!m_results.empty())
+			ext.Format(_T("  -  %s (%d regions)"), (LPCTSTR)leaf, static_cast<int>(m_results.size()));
+		else
+			ext.Format(_T("  -  %s (%d files)"), (LPCTSTR)leaf, static_cast<int>(m_files.size()));
+		title += ext;
+	}
+	SetWindowText(title);
+}
+
+// ------------------------------------------------------------------
+// 설정 영속화(INI)
+// ------------------------------------------------------------------
+CString CGlimRegionViewerDlg::SettingsIniPath() const
+{
+	if (!m_iniPath.IsEmpty())
+		return m_iniPath;
+	// 미결정 상태(방어): exe 옆 기본 경로.
+	return GetExeDir() + _T("\\GlimRegionViewer.ini");
+}
+
+// 쓰기 가능한 INI 경로를 한 번 결정한다.
+//  1순위: exe 옆(GlimRegionViewer.ini) — 쓰기 가능하면 사용.
+//  2순위: %APPDATA%\GlimRegionViewer\GlimRegionViewer.ini — Program Files 등 보호 경로 대비.
+void CGlimRegionViewerDlg::ResolveIniPath()
+{
+	CString exeIni = GetExeDir() + _T("\\GlimRegionViewer.ini");
+
+	// 프로브 쓰기로 exe 폴더 쓰기 가능 여부 확인.
+	if (::WritePrivateProfileString(_T("__probe"), _T("w"), _T("1"), exeIni))
+	{
+		::WritePrivateProfileString(_T("__probe"), NULL, NULL, exeIni); // 프로브 섹션 제거
+		m_iniPath = exeIni;
+		return;
+	}
+
+	// 폴백: APPDATA 폴더 하위 GlimRegionViewer
+	TCHAR appdata[MAX_PATH] = { 0 };
+	if (SUCCEEDED(::SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, SHGFP_TYPE_CURRENT, appdata)))
+	{
+		CString dir(appdata);
+		dir += _T("\\GlimRegionViewer");
+		::CreateDirectory(dir, NULL); // 이미 있으면 무시
+		m_iniPath = dir + _T("\\GlimRegionViewer.ini");
+	}
+	else
+	{
+		// SHGetFolderPath 실패 시에도 exe 경로 유지(최선 노력).
+		m_iniPath = exeIni;
+	}
+}
+
+void CGlimRegionViewerDlg::SaveSettings()
+{
+	const CString ini = SettingsIniPath();
+
+	// 마지막 폴더 경로(파일 목록의 첫 항목이 있는 디렉터리)
+	CString lastFolder;
+	if (!m_files.empty())
+	{
+		std::string first = m_files[0];
+		size_t sl = first.find_last_of("\\/");
+		lastFolder = ToCStr(sl != std::string::npos ? first.substr(0, sl) : std::string());
+	}
+	::WritePrivateProfileString(kIniSection, _T("LastFolder"), lastFolder, ini);
+
+	// 프로파일(콤보 텍스트로 저장 → 복원 시 이름 매칭)
+	{
+		CString prof;
+		int sel = m_comboProfile.GetCurSel();
+		if (sel >= 0)
+			m_comboProfile.GetLBText(sel, prof);
+		::WritePrivateProfileString(kIniSection, _T("Profile"), prof, ini);
+	}
+
+	// 이진화 모드 + 모드별 파라미터(에딧 텍스트 그대로)
+	{
+		CString v;
+		v.Format(_T("%d"), m_comboBinarize.GetCurSel());
+		::WritePrivateProfileString(kIniSection, _T("BinarizeMode"), v, ini);
+	}
+	struct { LPCTSTR key; UINT id; } edits[] = {
+		{ _T("ParamTH"),       IDC_EDIT_TH },
+		{ _T("ParamOffset"),   IDC_EDIT_OFFSET },
+		{ _T("ParamWkKernel"), IDC_EDIT_WK_KERNEL },
+		{ _T("ParamWkBlur"),   IDC_EDIT_WK_BLUR },
+		{ _T("ParamWkResp"),   IDC_EDIT_WK_RESP },
+		{ _T("ParamPBlackTh"), IDC_EDIT_PBLACK_TH },
+		{ _T("ParamPWhiteTh"), IDC_EDIT_PWHITE_TH },
+		{ _T("ParamPKernel"),  IDC_EDIT_PKERNEL },
+		{ _T("XScale"),        IDC_EDIT_XSCALE },
+		{ _T("YScale"),        IDC_EDIT_YSCALE },
+		{ _T("Threads"),       IDC_EDIT_THREADS },
+	};
+	for (size_t i = 0; i < sizeof(edits) / sizeof(edits[0]); ++i)
+	{
+		CWnd* w = GetDlgItem(edits[i].id);
+		if (w)
+		{
+			CString s;
+			w->GetWindowText(s);
+			::WritePrivateProfileString(kIniSection, edits[i].key, s, ini);
+		}
+	}
+
+	// 오버레이 토글 / 줌
+	{
+		CString v;
+		v.Format(_T("%d"), m_showOverlay ? 1 : 0);
+		::WritePrivateProfileString(kIniSection, _T("Overlay"), v, ini);
+		v.Format(_T("%d"), m_zoom);
+		::WritePrivateProfileString(kIniSection, _T("Zoom"), v, ini);
+	}
+
+	// 창 위치/크기(WINDOWPLACEMENT)
+	WINDOWPLACEMENT wp;
+	::ZeroMemory(&wp, sizeof(wp));
+	wp.length = sizeof(wp);
+	if (GetWindowPlacement(&wp))
+	{
+		struct { LPCTSTR key; int val; } wpv[] = {
+			{ _T("Flags"),     (int)wp.flags },
+			{ _T("ShowCmd"),   (int)wp.showCmd },
+			{ _T("NormLeft"),  wp.rcNormalPosition.left },
+			{ _T("NormTop"),   wp.rcNormalPosition.top },
+			{ _T("NormRight"), wp.rcNormalPosition.right },
+			{ _T("NormBottom"),wp.rcNormalPosition.bottom },
+		};
+		for (size_t i = 0; i < sizeof(wpv) / sizeof(wpv[0]); ++i)
+		{
+			CString v;
+			v.Format(_T("%d"), wpv[i].val);
+			::WritePrivateProfileString(kIniSectionWin, wpv[i].key, v, ini);
+		}
+	}
+}
+
+void CGlimRegionViewerDlg::LoadSettings()
+{
+	const CString ini = SettingsIniPath();
+	if (::GetFileAttributes(ini) == INVALID_FILE_ATTRIBUTES)
+		return; // INI 부재 → 기본값 유지
+
+	TCHAR buf[1024];
+
+	// 이진화 모드 먼저(에딧 가시성/값 반영 순서)
+	int mode = ::GetPrivateProfileInt(kIniSection, _T("BinarizeMode"), 0, ini);
+	if (mode >= 0 && mode < m_comboBinarize.GetCount())
+	{
+		m_comboBinarize.SetCurSel(mode);
+		UpdateBinarizeParamVisibility();
+	}
+
+	// 파라미터 에딧(텍스트 그대로 복원)
+	struct { LPCTSTR key; UINT id; } edits[] = {
+		{ _T("ParamTH"),       IDC_EDIT_TH },
+		{ _T("ParamOffset"),   IDC_EDIT_OFFSET },
+		{ _T("ParamWkKernel"), IDC_EDIT_WK_KERNEL },
+		{ _T("ParamWkBlur"),   IDC_EDIT_WK_BLUR },
+		{ _T("ParamWkResp"),   IDC_EDIT_WK_RESP },
+		{ _T("ParamPBlackTh"), IDC_EDIT_PBLACK_TH },
+		{ _T("ParamPWhiteTh"), IDC_EDIT_PWHITE_TH },
+		{ _T("ParamPKernel"),  IDC_EDIT_PKERNEL },
+		{ _T("XScale"),        IDC_EDIT_XSCALE },
+		{ _T("YScale"),        IDC_EDIT_YSCALE },
+		{ _T("Threads"),       IDC_EDIT_THREADS },
+	};
+	for (size_t i = 0; i < sizeof(edits) / sizeof(edits[0]); ++i)
+	{
+		buf[0] = 0;
+		::GetPrivateProfileString(kIniSection, edits[i].key, _T(""), buf, 1024, ini);
+		if (buf[0] != 0)
+		{
+			CWnd* w = GetDlgItem(edits[i].id);
+			if (w)
+				w->SetWindowText(buf);
+		}
+	}
+	m_xScale = GetEditDouble(IDC_EDIT_XSCALE, 1.0);
+	m_yScale = GetEditDouble(IDC_EDIT_YSCALE, 1.0);
+
+	// 오버레이 / 줌
+	m_showOverlay = (::GetPrivateProfileInt(kIniSection, _T("Overlay"), 1, ini) != 0);
+	CheckDlgButton(IDC_CHECK_OVERLAY, m_showOverlay ? BST_CHECKED : BST_UNCHECKED);
+	m_zoom = ::GetPrivateProfileInt(kIniSection, _T("Zoom"), 4, ini);
+	{
+		const int zooms[] = { 1, 2, 4, 8, 16 };
+		for (int i = 0; i < 5; ++i)
+			if (zooms[i] == m_zoom) { m_comboZoom.SetCurSel(i); break; }
+		m_detailView.SetZoom(m_zoom);
+	}
+
+	// 프로파일(이름 매칭 후 선택 + 로드)
+	buf[0] = 0;
+	::GetPrivateProfileString(kIniSection, _T("Profile"), _T(""), buf, 1024, ini);
+	if (buf[0] != 0)
+	{
+		int idx = m_comboProfile.FindStringExact(-1, buf);
+		if (idx >= 0)
+		{
+			m_comboProfile.SetCurSel(idx);
+			LoadProfileSelection();
+			m_cards.SetData(&m_results, &m_thumbCache, m_profileLoaded);
+		}
+	}
+
+	// 창 위치/크기 복원(WINDOWPLACEMENT)
+	{
+		int nl = ::GetPrivateProfileInt(kIniSectionWin, _T("NormLeft"), INT_MIN, ini);
+		if (nl != INT_MIN)
+		{
+			WINDOWPLACEMENT wp;
+			::ZeroMemory(&wp, sizeof(wp));
+			wp.length = sizeof(wp);
+			wp.flags = (UINT)::GetPrivateProfileInt(kIniSectionWin, _T("Flags"), 0, ini);
+			wp.showCmd = (UINT)::GetPrivateProfileInt(kIniSectionWin, _T("ShowCmd"), SW_SHOWNORMAL, ini);
+			// 최소화 상태로는 복원하지 않음(정상 크기로 기동)
+			if (wp.showCmd == SW_SHOWMINIMIZED)
+				wp.showCmd = SW_SHOWNORMAL;
+			wp.rcNormalPosition.left = nl;
+			wp.rcNormalPosition.top = ::GetPrivateProfileInt(kIniSectionWin, _T("NormTop"), 0, ini);
+			wp.rcNormalPosition.right = ::GetPrivateProfileInt(kIniSectionWin, _T("NormRight"), nl + 900, ini);
+			wp.rcNormalPosition.bottom = ::GetPrivateProfileInt(kIniSectionWin, _T("NormBottom"), 0, ini);
+
+			// 화면 밖으로 완전히 벗어난 경우는 무시(안전)
+			CRect rc(wp.rcNormalPosition);
+			if (rc.Width() > 200 && rc.Height() > 150)
+				SetWindowPlacement(&wp);
+		}
+	}
+
+	// 마지막 폴더 복원(존재하면 목록 로드)
+	buf[0] = 0;
+	::GetPrivateProfileString(kIniSection, _T("LastFolder"), _T(""), buf, 1024, ini);
+	if (buf[0] != 0)
+	{
+		CString folder(buf);
+		if (::GetFileAttributes(folder) != INVALID_FILE_ATTRIBUTES)
+		{
+			try { LoadFolder(folder); }
+			catch (...) {}
+		}
+	}
 }
