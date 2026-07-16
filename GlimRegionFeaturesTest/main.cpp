@@ -68,6 +68,29 @@ double NormAxisDeg(double rad)
 	return deg;
 }
 
+// 마스크에서 행 단위 런 개수를 직접 계수(그라운드트루스, 런렝스 검증용)
+int CountRunsInMask(const cv::Mat& img)
+{
+	int count = 0;
+	for (int y = 0; y < img.rows; ++y)
+	{
+		const unsigned char* p = img.ptr<unsigned char>(y);
+		bool inRun = false;
+		for (int x = 0; x < img.cols; ++x)
+		{
+			if (p[x] != 0)
+			{
+				if (!inRun) { count++; inRun = true; }
+			}
+			else
+			{
+				inRun = false;
+			}
+		}
+	}
+	return count;
+}
+
 // 이미지 하나에서 최대 면적 Region 하나만 계산
 bool ComputeSingle(const cv::Mat& img, FeatureVector& fvOut)
 {
@@ -240,9 +263,91 @@ void TestHoleBlob()
 	Check("area_holes", fv.areaHoles, kPi * 30.0 * 30.0, 8.0); // ~2827
 }
 
+void TestInnerRectangleAndRunlength()
+{
+	std::cout << "\n=== [6] inner_rectangle1 & runlength (square) ===" << std::endl;
+
+	// (a) 정사각형: 내접사각형 = 자기 자신, NumRuns = 높이, KFactor = h/sqrt(h^2) = 1
+	const int side = 100;
+	const int ox = 80, oy = 100; // 좌상단(col,row)
+	cv::Mat sq = cv::Mat::zeros(320, 320, CV_8UC1);
+	cv::rectangle(sq, cv::Rect(ox, oy, side, side), cv::Scalar(255), cv::FILLED);
+
+	FeatureVector fv;
+	if (!ComputeSingle(sq, fv)) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+
+	// 내접사각형 = 정사각형 자체(row1,col1,row2,col2 inclusive)
+	CheckAbs("inner_rect_row1", fv.innerRectRow1, static_cast<double>(oy), 1.0);
+	CheckAbs("inner_rect_col1", fv.innerRectCol1, static_cast<double>(ox), 1.0);
+	CheckAbs("inner_rect_row2", fv.innerRectRow2, static_cast<double>(oy + side - 1), 1.0);
+	CheckAbs("inner_rect_col2", fv.innerRectCol2, static_cast<double>(ox + side - 1), 1.0);
+	Check("inner_rect_fill_ratio", fv.innerRectFillRatio, 1.0, 2.0);
+
+	// 런렝스: 정사각형은 각 행이 1런 → NumRuns = side, KFactor = 1, MeanLength = side, LFactor = 1
+	CheckTrue("num_runs == side", fv.numRuns == side);
+	Check("k_factor (=1)", fv.kFactor, 1.0, 2.0);
+	Check("l_factor (=1)", fv.lFactor, 1.0, 2.0);
+	Check("mean_run_length (=side)", fv.meanRunLength, static_cast<double>(side), 2.0);
+}
+
+void TestInnerRectangleLShape()
+{
+	std::cout << "\n=== [7] inner_rectangle1 (L-shape) ===" << std::endl;
+
+	// L자: 세로팔(큰) + 가로발. 최대 내접 축평행 사각형 = 세로팔.
+	//  세로팔: cols[50,90](w=41), rows[50,160](h=111) → 4551 (최대)
+	//  가로발: cols[50,180](w=131), rows[130,160](h=31) → 4061
+	cv::Mat img = cv::Mat::zeros(240, 240, CV_8UC1);
+	cv::rectangle(img, cv::Rect(50, 50, 41, 111), cv::Scalar(255), cv::FILLED);  // 세로팔
+	cv::rectangle(img, cv::Rect(50, 130, 131, 31), cv::Scalar(255), cv::FILLED); // 가로발
+
+	FeatureVector fv;
+	if (!ComputeSingle(img, fv)) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+
+	// 기대 내접사각형 = 세로팔: row1=50, col1=50, row2=160, col2=90
+	CheckAbs("L inner_rect_row1", fv.innerRectRow1, 50.0, 1.0);
+	CheckAbs("L inner_rect_col1", fv.innerRectCol1, 50.0, 1.0);
+	CheckAbs("L inner_rect_row2", fv.innerRectRow2, 160.0, 1.0);
+	CheckAbs("L inner_rect_col2", fv.innerRectCol2, 90.0, 1.0);
+
+	const double innerArea = (fv.innerRectRow2 - fv.innerRectRow1 + 1.0)
+		* (fv.innerRectCol2 - fv.innerRectCol1 + 1.0);
+	Check("L inner_rect_area", innerArea, 41.0 * 111.0, 3.0); // 4551
+}
+
+void TestRunlengthStripes()
+{
+	std::cout << "\n=== [8] runlength (H-shape, multi-run rows) ===" << std::endl;
+
+	// H자(가로바 연결) — 상/하부는 좌우 2런, 가로바 구간은 1런. 런 분리 검증.
+	cv::Mat img = cv::Mat::zeros(240, 240, CV_8UC1);
+	cv::rectangle(img, cv::Rect(40, 40, 31, 161), cv::Scalar(255), cv::FILLED);  // 좌기둥 cols[40,70] rows[40,200]
+	cv::rectangle(img, cv::Rect(170, 40, 31, 161), cv::Scalar(255), cv::FILLED); // 우기둥 cols[170,200]
+	cv::rectangle(img, cv::Rect(40, 110, 161, 21), cv::Scalar(255), cv::FILLED); // 가로바 rows[110,130]
+
+	// 그라운드트루스 런 수를 마스크에서 직접 계수
+	const int expectedRuns = CountRunsInMask(img);
+
+	FeatureVector fv;
+	if (!ComputeSingle(img, fv)) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+
+	std::cout << "  expectedRuns=" << expectedRuns << " numRuns=" << fv.numRuns
+		<< " area=" << fv.area << " kFactor=" << fv.kFactor
+		<< " meanLen=" << fv.meanRunLength << std::endl;
+
+	CheckTrue("num_runs == expected (mask scan)", fv.numRuns == expectedRuns);
+	CheckTrue("num_runs > height (multi-run rows)", fv.numRuns > 161);
+	// 정의식 정합: MeanLength = Area/NumRuns, KFactor = NumRuns/sqrt(Area)
+	if (fv.numRuns > 0)
+	{
+		Check("mean_run_length def", fv.meanRunLength, fv.area / fv.numRuns, 0.5);
+		Check("k_factor def", fv.kFactor, fv.numRuns / std::sqrt(fv.area), 0.5);
+	}
+}
+
 void TestScoreAndRule()
 {
-	std::cout << "\n=== [6] Score & select_shape rule engine ===" << std::endl;
+	std::cout << "\n=== [10] Score & select_shape rule engine ===" << std::endl;
 
 	// 코드로 구성한 간단 프로파일(INI 없이도 동작 확인)
 	ScoreNormalizer norm;
@@ -277,7 +382,7 @@ void TestScoreAndRule()
 
 void TestProfileIni()
 {
-	std::cout << "\n=== [7] Profile INI load (optional) ===" << std::endl;
+	std::cout << "\n=== [11] Profile INI load (optional) ===" << std::endl;
 	// 실행 폴더 또는 상대 경로에 Coater.ini 가 있으면 로드 시도.
 	const char* candidates[] = {
 		"Coater.ini",
@@ -315,6 +420,9 @@ int main()
 		TestRectangle();
 		TestToothedCircle();
 		TestHoleBlob();
+		TestInnerRectangleAndRunlength();
+		TestInnerRectangleLShape();
+		TestRunlengthStripes();
 		TestScoreAndRule();
 		TestProfileIni();
 	}

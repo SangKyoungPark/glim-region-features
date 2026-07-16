@@ -70,6 +70,16 @@ struct FeatureVector {
 	// --- (우선순위 2) Hu 모멘트(크기·회전 불변) ---
 	double hu[7];
 
+	// --- (Phase 2) inner_rectangle1 : 최대 축평행 내접 사각형 (row,col, inclusive) ---
+	double innerRectRow1, innerRectCol1, innerRectRow2, innerRectCol2;
+	double innerRectFillRatio; // 내접사각형 면적 / 바운딩박스 면적 (0~1, 사각형=1)
+
+	// --- (Phase 2) runlength_features (행 단위 런 통계) ---
+	int    numRuns;        // 런 개수(행 단위 연속 전경 구간 수)
+	double kFactor;        // NumRuns / sqrt(Area) — 줄무늬/복잡도 계수
+	double lFactor;        // NumRuns / 바운딩박스 높이(Row2-Row1+1)
+	double meanRunLength;  // Area / NumRuns — 평균 런 길이
+
 	// --- 파생 Score 보조값 ---
 	double aspectRatio;    // Rect2 장/단변 비
 	double fillRatio;      // A / Rect2 면적

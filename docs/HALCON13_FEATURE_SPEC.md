@@ -82,9 +82,14 @@
 ### smallest_rectangle2 — 최소면적 회전 사각형 (cv::minAreaRect)
 ### smallest_circle — 최소 외접원 (cv::minEnclosingCircle)
 ### inner_circle — 최대 내접원: 거리변환(cv::distanceTransform, DIST_L2) 최대값 위치/반경
-### inner_rectangle1 — 최대 축평행 내접 사각형: 히스토그램 스택 방식 O(W·H)
+### inner_rectangle1 — 최대 축평행 내접 사각형: 히스토그램 스택 방식 O(W·H) [구현완료]
+- Region 마스크(ToMask, 로컬 ROI) 기준. 각 행마다 열별 높이 히스토그램을 갱신하고,
+  스택 기반 "히스토그램 최대 직사각형(largest rectangle in histogram)"으로 최대 내접 사각형을 찾는다.
+- 출력: (row1,col1,row2,col2) — 다른 위치성 값과 동일한 Halcon (row,col) inclusive 좌표. offset(bbox 좌상단) 가산해 절대좌표로 저장.
+- 파생값: `inner_rect_fill_ratio` = 내접사각형 면적 / 바운딩박스 면적 (0~1, 완전 사각형=1). rectangularity(회전 허용)와 달리 축평행 충실도.
+- 검증: 정사각형 → 내접사각형 = 자기 자신(오차 ≤1px), fill_ratio ≈ 1. L자 → 큰 팔(수기 계산 4551) 일치.
 
-파생 Score: 종횡비(Rect2 장/단변), 충진율(A / Rect2 면적), 내외접비(inner_circle.r / smallest_circle.r)
+파생 Score: 종횡비(Rect2 장/단변), 충진율(A / Rect2 면적), 내외접비(inner_circle.r / smallest_circle.r), inner_rect_fill_ratio(축평행 내접사각형 충실도)
 
 ## 5. 모멘트 (우선순위 2 — 분류기 입력)
 
@@ -101,8 +106,17 @@
 - 연결 성분 수, 구멍 수, Euler = 성분 − 구멍
 - 기포 군집(구멍 다수) vs 단일 핀홀 구분.
 
-### runlength_features
-- 런 개수, K-factor = 런수/sqrt(A) 등 — 줄무늬성 판정 보조. 우선순위 낮음.
+### runlength_features [구현완료]
+- 런 = 한 행(row)에서 연속된 전경 픽셀 구간. Region 은 이미 런렝스로 보관하므로 `region.Runs()` 를 직접 집계(O(런수)).
+- 출력값(Halcon13 정의 재현):
+  - `num_runs` = 런 개수(NumRuns)
+  - `k_factor` = NumRuns / sqrt(Area) — 줄무늬/복잡도 계수(런이 많고 면적이 작을수록 큼)
+  - `l_factor` = NumRuns / **바운딩박스 높이(Row2−Row1+1)**
+    - 근거: Halcon 문서상 LFactor 는 "런 수 ÷ region 높이(=행 방향 확장, Row2−Row1+1)". "런이 존재하는 행 수"가 아니라 바운딩박스 높이를 분모로 사용한다.
+      (단일 연결 성분은 통상 span 내 모든 행에 런이 있어 두 정의가 일치하나, 정의상 바운딩박스 높이를 채택)
+  - `mean_run_length` = Area / NumRuns — 평균 런 길이(MeanLength)
+  - **Bytes(메모리 추정치)는 생략** — Halcon 내부 런렝스 표현의 바이트 추정치로, 자체 구현의 메모리 레이아웃이 달라 재현 의미가 낮다.
+- 검증: 정사각형(변 s) → NumRuns=s, KFactor=s/sqrt(s²)=1, MeanLength=s, LFactor=1. H자 → 다중런 행 존재(NumRuns>높이), 마스크 직접 계수와 일치.
 
 ## 7. 선택/필터 (라이브러리의 분류 룰 엔진)
 

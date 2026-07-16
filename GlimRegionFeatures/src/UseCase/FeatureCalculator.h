@@ -36,6 +36,8 @@ private:
 	void ComputeCircles(const Region& region, FeatureVector& fv) const;
 	void ComputeTopology(const Region& region, FeatureVector& fv) const;
 	void ComputeHuMoments(const Region& region, FeatureVector& fv) const;
+	void ComputeInnerRectangle(const Region& region, FeatureVector& fv) const;
+	void ComputeRunlength(const Region& region, FeatureVector& fv) const;
 	void ComputeDerived(FeatureVector& fv) const;
 
 	bool m_computePriority2;

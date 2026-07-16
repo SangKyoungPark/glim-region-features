@@ -53,6 +53,8 @@ FeatureVector FeatureCalculator::Compute(const Region& region) const
 			ComputeCircles(region, fv);
 			ComputeTopology(region, fv);
 			ComputeHuMoments(region, fv);
+			ComputeInnerRectangle(region, fv);
+			ComputeRunlength(region, fv);
 			ComputeDerived(fv);
 		}
 	}
@@ -463,6 +465,108 @@ void FeatureCalculator::ComputeHuMoments(const Region& region, FeatureVector& fv
 			fv.hu[i] = hu[i];
 	}
 	catch (const cv::Exception&) {}
+}
+
+void FeatureCalculator::ComputeInnerRectangle(const Region& region, FeatureVector& fv) const
+{
+	// inner_rectangle1: 최대 축평행 내접 사각형(모두 전경 픽셀). Halcon (row1,col1,row2,col2).
+	// 히스토그램 스택 방식 O(W·H): 각 행마다 열별 높이를 갱신하고, 히스토그램 최대 직사각형을 구한다.
+	try
+	{
+		cv::Point offset;
+		cv::Mat mask = region.ToMask(offset); // 로컬 ROI(전경=255), offset=좌상단(col,row)
+		if (mask.empty())
+			return;
+
+		const int H = mask.rows;
+		const int W = mask.cols;
+		if (H <= 0 || W <= 0)
+			return;
+
+		// heights[c] = 현재 행에서 위로 연속된 전경 픽셀 수(로컬 좌표)
+		std::vector<int> heights(W, 0);
+		std::vector<int> stackIdx;       // 인덱스 스택(높이 오름차순 유지)
+		stackIdx.reserve(W + 1);
+
+		long long bestArea = 0;
+		int bestTop = 0, bestLeft = 0, bestBottom = -1, bestRight = -1; // 로컬 inclusive
+
+		for (int r = 0; r < H; ++r)
+		{
+			const unsigned char* p = mask.ptr<unsigned char>(r);
+			for (int c = 0; c < W; ++c)
+				heights[c] = (p[c] != 0) ? (heights[c] + 1) : 0;
+
+			// 히스토그램 최대 직사각형(위치 추적). i==W 는 높이 0 센티널.
+			stackIdx.clear();
+			for (int i = 0; i <= W; ++i)
+			{
+				const int curH = (i < W) ? heights[i] : 0;
+				while (!stackIdx.empty() && heights[stackIdx.back()] >= curH)
+				{
+					const int topIdx = stackIdx.back();
+					stackIdx.pop_back();
+					const int h = heights[topIdx];
+					const int leftCol = stackIdx.empty() ? 0 : (stackIdx.back() + 1);
+					const int rightCol = i - 1;
+					const long long area = static_cast<long long>(h) * (rightCol - leftCol + 1);
+					if (h > 0 && area > bestArea)
+					{
+						bestArea = area;
+						bestTop = r - h + 1;   // 로컬 상단 행
+						bestBottom = r;        // 로컬 하단 행(현재 행)
+						bestLeft = leftCol;
+						bestRight = rightCol;
+					}
+				}
+				stackIdx.push_back(i);
+			}
+		}
+
+		if (bestBottom < 0 || bestRight < 0)
+			return; // 전경 없음
+
+		// 로컬 → 절대(row,col). offset.x=col, offset.y=row.
+		fv.innerRectRow1 = static_cast<double>(offset.y + bestTop);
+		fv.innerRectCol1 = static_cast<double>(offset.x + bestLeft);
+		fv.innerRectRow2 = static_cast<double>(offset.y + bestBottom);
+		fv.innerRectCol2 = static_cast<double>(offset.x + bestRight);
+
+		// 파생: 내접사각형 면적 / 바운딩박스 면적 (충실도 지표, 0~1)
+		const double bboxArea = static_cast<double>(H) * static_cast<double>(W);
+		if (bboxArea > kEps)
+		{
+			double ratio = static_cast<double>(bestArea) / bboxArea;
+			if (ratio > 1.0) ratio = 1.0;
+			fv.innerRectFillRatio = ratio;
+		}
+	}
+	catch (const cv::Exception&) {}
+}
+
+void FeatureCalculator::ComputeRunlength(const Region& region, FeatureVector& fv) const
+{
+	// runlength_features(Halcon13 재현). 런 = 한 행의 연속 전경 픽셀 구간.
+	//  NumRuns   = 런 개수
+	//  KFactor   = NumRuns / sqrt(Area)
+	//  LFactor   = NumRuns / 바운딩박스 높이(Row2-Row1+1)  ← Halcon: "런 수 / region 높이"
+	//  MeanLength= Area / NumRuns
+	//  Bytes(메모리 추정치)는 재현 의미가 낮아 생략(스펙 문서 기록).
+	const std::vector<Run>& runs = region.Runs();
+	fv.numRuns = static_cast<int>(runs.size());
+
+	const double area = static_cast<double>(region.Area());
+	const double nRuns = static_cast<double>(fv.numRuns);
+
+	if (fv.numRuns > 0 && area > 0.0)
+	{
+		fv.kFactor = nRuns / std::sqrt(area);
+		fv.meanRunLength = area / nRuns;
+	}
+
+	const int bboxH = region.BoundingBox().height; // Row2-Row1+1
+	if (bboxH > 0)
+		fv.lFactor = nRuns / static_cast<double>(bboxH);
 }
 
 void FeatureCalculator::ComputeDerived(FeatureVector& fv) const

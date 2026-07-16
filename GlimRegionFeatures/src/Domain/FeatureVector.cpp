@@ -22,6 +22,9 @@ FeatureVector::FeatureVector()
 	innerCircleRow = 0.0; innerCircleCol = 0.0; innerCircleRadius = 0.0;
 	connectComponents = 0; holes = 0; eulerNumber = 0;
 	for (int i = 0; i < 7; ++i) hu[i] = 0.0;
+	innerRectRow1 = 0.0; innerRectCol1 = 0.0; innerRectRow2 = 0.0; innerRectCol2 = 0.0;
+	innerRectFillRatio = 0.0;
+	numRuns = 0; kFactor = 0.0; lFactor = 0.0; meanRunLength = 0.0;
 	aspectRatio = 0.0; fillRatio = 0.0; innerOuterRatio = 0.0;
 }
 
@@ -59,6 +62,15 @@ double FeatureVector::GetByName(const std::string& name) const
 	if (name == "inner_outer_ratio")return innerOuterRatio;
 	if (name == "rect2_len1")       return rect2Len1;
 	if (name == "rect2_len2")       return rect2Len2;
+	if (name == "inner_rect_row1")  return innerRectRow1;
+	if (name == "inner_rect_col1")  return innerRectCol1;
+	if (name == "inner_rect_row2")  return innerRectRow2;
+	if (name == "inner_rect_col2")  return innerRectCol2;
+	if (name == "inner_rect_fill_ratio") return innerRectFillRatio;
+	if (name == "num_runs")         return static_cast<double>(numRuns);
+	if (name == "k_factor")         return kFactor;
+	if (name == "l_factor")         return lFactor;
+	if (name == "mean_run_length")  return meanRunLength;
 	return 0.0;
 }
 
@@ -75,7 +87,9 @@ std::string FeatureVector::CsvHeader()
 		"inner_circle_row,inner_circle_col,inner_circle_radius,"
 		"connect_components,holes,euler_number,"
 		"aspect_ratio,fill_ratio,inner_outer_ratio,"
-		"hu0,hu1,hu2,hu3,hu4,hu5,hu6";
+		"hu0,hu1,hu2,hu3,hu4,hu5,hu6,"
+		"inner_rect_row1,inner_rect_col1,inner_rect_row2,inner_rect_col2,inner_rect_fill_ratio,"
+		"num_runs,k_factor,l_factor,mean_run_length";
 }
 
 std::string FeatureVector::ToCsvRow() const
@@ -96,6 +110,8 @@ std::string FeatureVector::ToCsvRow() const
 		<< aspectRatio << ',' << fillRatio << ',' << innerOuterRatio;
 	for (int i = 0; i < 7; ++i)
 		oss << ',' << hu[i];
+	oss << ',' << innerRectRow1 << ',' << innerRectCol1 << ',' << innerRectRow2 << ',' << innerRectCol2 << ',' << innerRectFillRatio
+		<< ',' << numRuns << ',' << kFactor << ',' << lFactor << ',' << meanRunLength;
 	return oss.str();
 }
 
