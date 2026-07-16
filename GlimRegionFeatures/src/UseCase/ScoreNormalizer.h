@@ -32,6 +32,18 @@ public:
 	void SetConfigs(const std::vector<ScoreConfig>& configs);
 	void Clear();
 
+	// 같은 이름의 설정이 있으면 제자리 교체(값/방향 갱신), 없으면 추가.
+	//  → 기본 테이블 위에 프로파일 INI 를 덮어쓸 때 컬럼 순서를 유지한다.
+	void UpsertConfig(const ScoreConfig& config);
+
+	// 전 스칼라 특징값 기본 정규화 테이블(고정 순서)로 현재 설정을 채운다.
+	//  프로파일이 없거나 [Score] 가 비어도 모든 특징값 Score 가 계산되도록 한다.
+	//  위치성(row/col)·각도(phi/orientation) 값은 Score 대상에서 제외.
+	void SeedDefaults();
+
+	// 기본 정규화 테이블(고정 순서, 스칼라 특징값만). 최초 1회 생성 후 공유.
+	static const std::vector<ScoreConfig>& DefaultConfigs();
+
 	size_t ConfigCount() const { return m_configs.size(); }
 	const std::vector<ScoreConfig>& Configs() const { return m_configs; }
 

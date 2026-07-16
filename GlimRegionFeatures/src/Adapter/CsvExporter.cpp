@@ -30,6 +30,29 @@ namespace {
 			[](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 		return out;
 	}
+
+	// 프로파일이 없을 때 사용할 기본 스코어 정규화기(전 스칼라 특징값 기본 테이블).
+	//  최초 1회만 생성(C++11 정적 지역변수 스레드 안전 초기화). 이후 읽기전용 공유.
+	const ScoreNormalizer& DefaultNormalizer()
+	{
+		static const ScoreNormalizer s_norm = []()
+		{
+			ScoreNormalizer n;
+			n.SeedDefaults();
+			return n;
+		}();
+		return s_norm;
+	}
+
+	// 프로파일 유무에 따라 사용할 정규화기 선택.
+	//  - 프로파일 로드됨: 프로파일 정규화기(로드시 기본 시드 + INI 오버라이드 적용됨)
+	//  - 없음: 기본 테이블 정규화기
+	const ScoreNormalizer& EffectiveNormalizer(const ProfileLoader* profile)
+	{
+		if (profile != NULL && profile->IsLoaded())
+			return profile->Normalizer();
+		return DefaultNormalizer();
+	}
 }
 
 bool CsvExporter::IsSupportedImage(const std::string& ext)
@@ -64,10 +87,9 @@ int CsvExporter::FeatureColumnCount()
 
 std::vector<std::string> CsvExporter::ScoreFeatureNames(const ProfileLoader* profile)
 {
+	// 프로파일이 없어도 기본 테이블 이름을 반환한다(전 특징값 Score 항상 출력).
 	std::vector<std::string> names;
-	if (profile == NULL || !profile->IsLoaded())
-		return names;
-	const std::vector<ScoreConfig>& cfgs = profile->Normalizer().Configs();
+	const std::vector<ScoreConfig>& cfgs = EffectiveNormalizer(profile).Configs();
 	for (size_t i = 0; i < cfgs.size(); ++i)
 		names.push_back(cfgs[i].m_featureName);
 	return names;
@@ -77,13 +99,13 @@ std::string CsvExporter::BuildHeader(const ProfileLoader* profile)
 {
 	// FileName 뒤에 FilePath 삽입(기존 사용자 인지 순서 유지). RegionIndex 뒤에 Channel(B/W) 추가.
 	std::string header = "FileName,FilePath,RegionIndex,Channel," + FeatureVector::CsvHeader();
+	// score_* 컬럼은 프로파일 유무와 무관하게 항상 출력(기본 테이블 → 전 특징값 Score).
+	std::vector<std::string> names = ScoreFeatureNames(profile);
+	for (size_t i = 0; i < names.size(); ++i)
+		header += ",score_" + names[i];
+	// ClassifiedCode 는 룰 엔진이 있는 프로파일 로드 시에만 출력.
 	if (profile != NULL && profile->IsLoaded())
-	{
-		std::vector<std::string> names = ScoreFeatureNames(profile);
-		for (size_t i = 0; i < names.size(); ++i)
-			header += ",score_" + names[i];
 		header += ",ClassifiedCode";
-	}
 	// CSV 끝: mm 파생 컬럼(픽셀 원시 컬럼은 전부 유지, 병기). 스케일 1.0이면 픽셀값과 동일.
 	header += ",area_mm2,width_mm,height_mm,diameter_mm";
 	return header;
@@ -97,12 +119,14 @@ std::string CsvExporter::BuildRegionRow(const std::string& fileName, const std::
 	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ","
 		<< regionIndex << "," << channel << "," << fv.ToCsvRow();
 
+	// score_* : 프로파일 유무와 무관하게 항상 계산(없으면 기본 테이블).
+	std::vector<std::string> names = ScoreFeatureNames(profile);
+	ScoreResult sr = EffectiveNormalizer(profile).Normalize(fv);
+	for (size_t i = 0; i < names.size(); ++i)
+		oss << "," << sr.Get(names[i]);
+	// ClassifiedCode 는 프로파일(룰 엔진) 있을 때만.
 	if (profile != NULL && profile->IsLoaded())
 	{
-		std::vector<std::string> names = ScoreFeatureNames(profile);
-		ScoreResult sr = profile->Normalizer().Normalize(fv);
-		for (size_t i = 0; i < names.size(); ++i)
-			oss << "," << sr.Get(names[i]);
 		std::string code = profile->RuleEngine().Classify(fv, "OK");
 		oss << "," << CsvQuote(code);
 	}
@@ -128,13 +152,13 @@ std::string CsvExporter::BuildEmptyRow(const std::string& fileName, const std::s
 	// RegionIndex=-1, Channel 공란, 특징값 전부 공란
 	oss << CsvQuote(fileName) << "," << CsvQuote(filePath) << ",-1,," << emptyFeat;
 
+	// score_* 컬럼 공란(개수는 BuildHeader 와 정합). 프로파일 유무와 무관하게 항상 출력.
+	std::vector<std::string> names = ScoreFeatureNames(profile);
+	for (size_t i = 0; i < names.size(); ++i)
+		oss << ",";
+	// ClassifiedCode 는 프로파일 있을 때만.
 	if (profile != NULL && profile->IsLoaded())
-	{
-		std::vector<std::string> names = ScoreFeatureNames(profile);
-		for (size_t i = 0; i < names.size(); ++i)
-			oss << ",";
 		oss << ",NO_REGION";
-	}
 	// mm 파생 컬럼 4개 공란
 	oss << ",,,,";
 	return oss.str();

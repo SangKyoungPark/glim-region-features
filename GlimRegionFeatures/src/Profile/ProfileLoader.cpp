@@ -22,6 +22,10 @@ bool ProfileLoader::Load(const std::string& iniPath)
 
 	m_profileName = ini.GetString("Profile", "name", "Unknown");
 
+	// 기본 정규화 테이블을 먼저 시드 → 모든 스칼라 특징값 Score 가 항상 계산된다.
+	// 이후 [Score] 섹션이 같은 이름을 만나면 값을 덮어쓴다(하위 호환, INI 우선).
+	m_normalizer.SeedDefaults();
+
 	ParseScoreSection(ini);
 	ParseSelectShape(ini);
 
@@ -55,7 +59,8 @@ void ProfileLoader::ParseScoreSection(const IniFile& ini)
 			if (dir == "dec" || dir == "DEC" || dir == "decreasing" || dir == "down")
 				cfg.m_increasing = false;
 		}
-		m_normalizer.AddConfig(cfg);
+		// 기본 테이블에 같은 이름이 있으면 제자리 교체(순서 유지, INI 우선), 없으면 추가.
+		m_normalizer.UpsertConfig(cfg);
 	}
 }
 

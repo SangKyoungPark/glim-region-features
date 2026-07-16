@@ -131,6 +131,47 @@
   - vMin/vMax는 공정 프로파일 INI에서 로드
 - FeatureVector: 모든 원시값 + Score를 담는 구조체. CSV 덤프 지원(데이터 수집·튜닝용).
 
+### 8.1 전 특징값 기본 스코어 테이블 (profile-less 기본값) [구현완료]
+
+목표: Halcon 처럼 "불량 이미지를 넣으면 Blob 마다 **모든** 특징값의 Score 가 전부 나온다".
+`ScoreNormalizer::SeedDefaults()` / `DefaultConfigs()` 가 아래 고정 순서 테이블을 내장한다.
+
+- 동작:
+  1. 프로파일이 없어도(또는 [Score] 가 비어도) 기본 테이블로 전 스칼라 특징값 Score 를 항상 계산한다.
+  2. 프로파일 INI [Score] 에 같은 이름이 있으면 **INI 가 기본값을 제자리 교체(UpsertConfig)** → 컬럼 순서 유지, INI 우선(하위 호환).
+  3. CSV 의 `score_*` 컬럼이 전 스칼라 특징값으로 확장(테이블 정의 순서로 고정 = 결정적). `ClassifiedCode` 는 룰 엔진(프로파일) 있을 때만.
+- 제외 대상: 위치성(center_row/col, 각종 좌표), 각도(phi, orientation) — Score 의미가 없어 제외.
+
+| # | feature | vMin | vMax | dir | 비고 |
+|---|---|---|---|---|---|
+| 1 | circularity | 0 | 1 | inc | 비율형 |
+| 2 | compactness | 1 | 5 | inc | 원=1, 복잡할수록↑ |
+| 3 | convexity | 0 | 1 | inc | 비율형 |
+| 4 | rectangularity | 0 | 1 | inc | 비율형 |
+| 5 | roundness | 0 | 1 | inc | 비율형 |
+| 6 | sides | 0 | 20 | inc | 변 수 추정 |
+| 7 | anisometry | 1 | 5 | inc | 길쭉함 |
+| 8 | bulkiness | 0 | 2 | inc | |
+| 9 | structure_factor | 0 | 5 | inc | |
+| 10 | ra | 5 | 500 | inc | 반장축(px) |
+| 11 | rb | 5 | 500 | inc | 반단축(px) |
+| 12 | area | 10 | 5000 | inc | 공정 가설(9장) |
+| 13 | contlength | 10 | 1000 | inc | |
+| 14 | diameter | 5 | 500 | inc | |
+| 15 | area_holes | 0 | 1000 | inc | |
+| 16 | holes | 0 | 10 | inc | |
+| 17 | euler_number | −10 | 1 | inc | |
+| 18 | aspect_ratio | 1 | 10 | inc | |
+| 19 | fill_ratio | 0 | 1 | inc | 비율형 |
+| 20 | inner_outer_ratio | 0 | 1 | inc | 비율형 |
+| 21 | inner_rect_fill_ratio | 0 | 1 | inc | 축평행 내접 충실도 |
+| 22 | num_runs | 1 | 1000 | inc | |
+| 23 | k_factor | 0 | 5 | inc | |
+| 24 | l_factor | 0 | 5 | inc | |
+| 25 | mean_run_length | 1 | 500 | inc | |
+
+> 무한 스케일형(area/contlength/diameter/ra/rb/mean_run_length 등) 범위는 9장 공정 가설 기반 **보수적 초기값**이며 현장 데이터로 튜닝 대상. 비율형(0~1)은 vMin=0, vMax=1.
+
 ## 9. 공정 프로파일 (초기 가설 — 현장 데이터로 튜닝)
 
 | 공정 | 대표 불량 | 주력 특징값 |

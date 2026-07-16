@@ -345,6 +345,48 @@ void TestRunlengthStripes()
 	}
 }
 
+void TestDefaultScoreTable()
+{
+	std::cout << "\n=== [9] default score table (profile-less) ===" << std::endl;
+
+	// (d) 프로파일 없이 전 스칼라 특징값 Score 계산 → 전부 0~100 범위
+	ScoreNormalizer norm;
+	norm.SeedDefaults();
+	CheckTrue("default table not empty", norm.ConfigCount() > 0);
+
+	FeatureVector fv;
+	fv.circularity = 0.5;   // 기본 [0,1] inc → 50
+	fv.convexity = 0.25;    // 기본 [0,1] inc → 25
+	fv.fillRatio = 1.5;     // clamp 상한 → 100
+	fv.roundness = -0.2;    // clamp 하한 → 0
+
+	ScoreResult sr = norm.Normalize(fv);
+	Check("score circularity(=50)", sr.Get("circularity"), 50.0, 1.0);
+	Check("score convexity(=25)", sr.Get("convexity"), 25.0, 1.0);
+	Check("score fill_ratio(clamp=100)", sr.Get("fill_ratio"), 100.0, 1.0);
+	Check("score roundness(clamp=0)", sr.Get("roundness"), 0.0, 0.5);
+
+	// 전 스칼라 Score 가 0~100 범위인지 확인
+	const std::vector<ScoreConfig>& cfgs = norm.Configs();
+	bool allInRange = true;
+	for (size_t i = 0; i < cfgs.size(); ++i)
+	{
+		double s = sr.Get(cfgs[i].m_featureName);
+		if (s < 0.0 || s > 100.0) { allInRange = false; break; }
+	}
+	CheckTrue("all scalar scores in [0,100]", allInRange);
+
+	// (e) INI 오버라이드가 기본값을 이긴다(제자리 교체, 컬럼 수 불변)
+	const size_t before = norm.ConfigCount();
+	norm.UpsertConfig(ScoreConfig("circularity", 0.5, 1.0, true)); // 범위 축소
+	CheckTrue("upsert keeps count (no dup)", norm.ConfigCount() == before);
+
+	FeatureVector fv2;
+	fv2.circularity = 0.75; // 기본[0,1]→75, 오버라이드[0.5,1]→50
+	ScoreResult sr2 = norm.Normalize(fv2);
+	Check("override wins (=50)", sr2.Get("circularity"), 50.0, 1.0);
+}
+
 void TestScoreAndRule()
 {
 	std::cout << "\n=== [10] Score & select_shape rule engine ===" << std::endl;
@@ -423,6 +465,7 @@ int main()
 		TestInnerRectangleAndRunlength();
 		TestInnerRectangleLShape();
 		TestRunlengthStripes();
+		TestDefaultScoreTable();
 		TestScoreAndRule();
 		TestProfileIni();
 	}
