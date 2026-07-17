@@ -62,6 +62,7 @@
 #include "Adapter/IPreprocessor.h"
 #include "Adapter/RegionExtractor.h"
 #include "Adapter/CsvExporter.h"
+#include "Adapter/ClusterCsvIO.h"
 #include "UseCase/FeatureCalculator.h"
 #include "UseCase/ScoreNormalizer.h"
 #include "UseCase/SelectShapeRule.h"

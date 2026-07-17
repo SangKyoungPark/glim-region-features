@@ -45,6 +45,9 @@
     <ClInclude Include="src\Adapter\IPreprocessor.h">
       <Filter>Adapter</Filter>
     </ClInclude>
+    <ClInclude Include="src\Adapter\ClusterCsvIO.h">
+      <Filter>Adapter</Filter>
+    </ClInclude>
     <ClInclude Include="src\UseCase\FeatureCalculator.h">
       <Filter>UseCase</Filter>
     </ClInclude>
@@ -93,6 +96,9 @@
       <Filter>Adapter</Filter>
     </ClCompile>
     <ClCompile Include="src\Adapter\IPreprocessor.cpp">
+      <Filter>Adapter</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Adapter\ClusterCsvIO.cpp">
       <Filter>Adapter</Filter>
     </ClCompile>
     <ClCompile Include="src\UseCase\FeatureCalculator.cpp">
