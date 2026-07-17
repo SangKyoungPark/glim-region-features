@@ -48,6 +48,9 @@
     <ClInclude Include="src\UseCase\SelectShapeRule.h">
       <Filter>UseCase</Filter>
     </ClInclude>
+    <ClInclude Include="src\UseCase\RegionRelation.h">
+      <Filter>UseCase</Filter>
+    </ClInclude>
     <ClInclude Include="src\Profile\IniFile.h">
       <Filter>Profile</Filter>
     </ClInclude>
@@ -78,6 +81,9 @@
       <Filter>UseCase</Filter>
     </ClCompile>
     <ClCompile Include="src\UseCase\SelectShapeRule.cpp">
+      <Filter>UseCase</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UseCase\RegionRelation.cpp">
       <Filter>UseCase</Filter>
     </ClCompile>
     <ClCompile Include="src\Profile\IniFile.cpp">

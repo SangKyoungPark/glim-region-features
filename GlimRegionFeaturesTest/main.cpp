@@ -108,6 +108,21 @@ bool ComputeSingle(const cv::Mat& img, FeatureVector& fvOut)
 	return true;
 }
 
+// 이미지 하나에서 최대 면적 Region 객체를 반환(관계 연산자 테스트용)
+bool ExtractSingle(const cv::Mat& img, Region& regionOut)
+{
+	RegionExtractor extractor;
+	std::vector<Region> regions = extractor.Extract(img, 5);
+	if (regions.empty())
+		return false;
+	size_t best = 0;
+	for (size_t i = 1; i < regions.size(); ++i)
+		if (regions[i].Area() > regions[best].Area())
+			best = i;
+	regionOut = regions[best];
+	return true;
+}
+
 } // namespace
 
 // ------------------------------------------------------------------
@@ -450,6 +465,215 @@ void TestProfileIni()
 		std::cout << "  (INI 미발견 - 스킵. profiles 폴더를 실행 폴더로 복사하면 검증됨)" << std::endl;
 }
 
+// ------------------------------------------------------------------
+// Phase 3: 신규 오퍼레이터 테스트
+// ------------------------------------------------------------------
+
+void TestMomentsAndInvariants()
+{
+	std::cout << "\n=== [12] moments (2nd/central/3rd) & invariants ===" << std::endl;
+
+	// 직사각형 120(col) x 60(row). 이산 균등분포 분산 = (N^2-1)/12.
+	//  row 분산 n20 = (60^2-1)/12 = 299.92,  col 분산 n02 = (120^2-1)/12 = 1199.92
+	cv::Mat img = cv::Mat::zeros(300, 400, CV_8UC1);
+	cv::rectangle(img, cv::Rect(140, 120, 120, 60), cv::Scalar(255), cv::FILLED);
+
+	FeatureVector fv;
+	if (!ComputeSingle(img, fv)) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+
+	Check("m2nd_m20 (row var)", fv.m2ndM20, (60.0 * 60.0 - 1.0) / 12.0, 3.0);   // 299.92
+	Check("m2nd_m02 (col var)", fv.m2ndM02, (120.0 * 120.0 - 1.0) / 12.0, 3.0); // 1199.92
+	CheckAbs("m2nd_m11 (~0)", fv.m2ndM11, 0.0, 5.0);
+	// Ia = max eig = col var, Ib = min eig = row var (대칭축이라 고유값=대각)
+	Check("m2nd_ia (=col var)", fv.m2ndIa, (120.0 * 120.0 - 1.0) / 12.0, 3.0);
+	Check("m2nd_ib (=row var)", fv.m2ndIb, (60.0 * 60.0 - 1.0) / 12.0, 3.0);
+
+	// 비정규화 중심 2차 = 정규화 · 면적
+	Check("mc_mu20 (=n20*A)", fv.mcMu20, fv.m2ndM20 * fv.area, 1.0);
+	Check("mc_mu02 (=n02*A)", fv.mcMu02, fv.m2ndM02 * fv.area, 1.0);
+
+	// 3차 중심 모멘트: 대칭 직사각형 → 전부 ~0
+	CheckAbs("m3rd_m30 (~0)", fv.m3rdM30, 0.0, 50.0);
+	CheckAbs("m3rd_m03 (~0)", fv.m3rdM03, 0.0, 50.0);
+
+	// 회전 불변 PHI1 = η20+η02 = (n20+n02)/A
+	const double phi1Expect = (fv.m2ndM20 + fv.m2ndM02) / fv.area;
+	Check("moment_phi1", fv.momentPhi1, phi1Expect, 1.0);
+	// PSI1=η20=n20/A, PSI3=η02=n02/A
+	Check("moment_psi1 (=n20/A)", fv.momentPsi1, fv.m2ndM20 / fv.area, 1.0);
+	Check("moment_psi3 (=n02/A)", fv.momentPsi3, fv.m2ndM02 / fv.area, 1.0);
+
+	// 원판(disk)의 PHI1 = 1/(2π) ≈ 0.15915 (스케일 불변 검증)
+	cv::Mat circ = cv::Mat::zeros(300, 300, CV_8UC1);
+	cv::circle(circ, cv::Point(150, 150), 70, cv::Scalar(255), cv::FILLED);
+	FeatureVector fc;
+	if (ComputeSingle(circ, fc))
+		Check("disk moment_phi1 (=1/2pi)", fc.momentPhi1, 1.0 / (2.0 * kPi), 5.0);
+}
+
+void TestThicknessProfile()
+{
+	std::cout << "\n=== [13] get_region_thickness (rectangle) ===" << std::endl;
+
+	// 120(col) x 60(row) 직사각형: 주축=col 방향, 수직 두께=60 일정.
+	cv::Mat img = cv::Mat::zeros(300, 400, CV_8UC1);
+	cv::rectangle(img, cv::Rect(140, 120, 120, 60), cv::Scalar(255), cv::FILLED);
+
+	RegionExtractor extractor;
+	std::vector<Region> regions = extractor.Extract(img, 5);
+	if (regions.empty()) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+	size_t best = 0;
+	for (size_t i = 1; i < regions.size(); ++i)
+		if (regions[i].Area() > regions[best].Area()) best = i;
+
+	FeatureCalculator calc;
+	double length = 0.0;
+	std::vector<double> prof = calc.ComputeThicknessProfile(regions[best], length);
+	FeatureVector fv = calc.Compute(regions[best]);
+
+	CheckTrue("thickness profile not empty", !prof.empty());
+	Check("thickness_length (~120)", fv.thicknessLength, 120.0, 5.0);
+	Check("thickness_mean (~60)", fv.thicknessMean, 60.0, 5.0);
+	Check("thickness_max (~60)", fv.thicknessMax, 60.0, 5.0);
+}
+
+void TestRunlengthDistribution()
+{
+	std::cout << "\n=== [14] runlength_distribution (square) ===" << std::endl;
+
+	// 정사각형 side=100: 모든 런 길이=100 → 분포[100]=100, min=max=mode=100.
+	const int side = 100;
+	cv::Mat sq = cv::Mat::zeros(320, 320, CV_8UC1);
+	cv::rectangle(sq, cv::Rect(80, 100, side, side), cv::Scalar(255), cv::FILLED);
+
+	RegionExtractor extractor;
+	std::vector<Region> regions = extractor.Extract(sq, 5);
+	if (regions.empty()) { std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+	size_t best = 0;
+	for (size_t i = 1; i < regions.size(); ++i)
+		if (regions[i].Area() > regions[best].Area()) best = i;
+
+	FeatureCalculator calc;
+	std::vector<int> hist = calc.ComputeRunlengthDistribution(regions[best]);
+	FeatureVector fv = calc.Compute(regions[best]);
+
+	CheckTrue("hist size == side+1", static_cast<int>(hist.size()) == side + 1);
+	if (static_cast<int>(hist.size()) == side + 1)
+		CheckTrue("hist[side] == side count", hist[side] == side);
+	CheckTrue("run_len_min == side", fv.runLenMin == side);
+	CheckTrue("run_len_max == side", fv.runLenMax == side);
+	CheckTrue("run_len_mode == side", fv.runLenMode == side);
+}
+
+void TestHammingDistance()
+{
+	std::cout << "\n=== [15] hamming_distance ===" << std::endl;
+
+	// A: cols[50,109] rows[50,109] (60x60=3600)
+	cv::Mat imgA = cv::Mat::zeros(200, 200, CV_8UC1);
+	cv::rectangle(imgA, cv::Rect(50, 50, 60, 60), cv::Scalar(255), cv::FILLED);
+	// A2: A 와 동일
+	cv::Mat imgA2 = imgA.clone();
+	// B: cols[80,139] rows[50,109] → A 와 col[80,109]=30, row 60 겹침 → inter=1800
+	cv::Mat imgB = cv::Mat::zeros(200, 200, CV_8UC1);
+	cv::rectangle(imgB, cv::Rect(80, 50, 60, 60), cv::Scalar(255), cv::FILLED);
+
+	Region rA, rA2, rB;
+	if (!ExtractSingle(imgA, rA) || !ExtractSingle(imgA2, rA2) || !ExtractSingle(imgB, rB))
+	{ std::cout << "  region 추출 실패" << std::endl; g_fail++; return; }
+
+	long long dist = -1; double sim = -1.0;
+	RegionRelation::HammingDistance(rA, rA2, dist, sim);
+	CheckTrue("identical -> distance 0", dist == 0);
+	Check("identical -> similarity 1", sim, 1.0, 0.5);
+
+	RegionRelation::HammingDistance(rA, rB, dist, sim);
+	// inter=1800, dist = 3600+3600-2*1800 = 3600, sim = 1 - 3600/7200 = 0.5
+	Check("overlap distance (=3600)", static_cast<double>(dist), 3600.0, 3.0);
+	Check("overlap similarity (=0.5)", sim, 0.5, 3.0);
+
+	double dn = -1.0, sn = -1.0;
+	RegionRelation::HammingDistanceNorm(rA, rB, 3600.0, dn, sn);
+	Check("norm distance (=1.0)", dn, 1.0, 3.0);
+}
+
+void TestRegionRelations()
+{
+	std::cout << "\n=== [16] region relation query/select ===" << std::endl;
+
+	// 3 blob: 좌사각(40,40,60,60), 우사각(300,40,60,60), 원(center 200,300 r40)
+	cv::Mat img = cv::Mat::zeros(400, 400, CV_8UC1);
+	cv::rectangle(img, cv::Rect(40, 40, 60, 60), cv::Scalar(255), cv::FILLED);
+	cv::rectangle(img, cv::Rect(300, 40, 60, 60), cv::Scalar(255), cv::FILLED);
+	cv::circle(img, cv::Point(200, 300), 40, cv::Scalar(255), cv::FILLED);
+
+	RegionExtractor extractor;
+	std::vector<Region> regions = extractor.Extract(img, 5);
+	CheckTrue("extracted 3 regions", regions.size() == 3);
+	if (regions.size() != 3) { g_fail++; return; }
+
+	// 분류: 최대면적=원, 나머지 두 사각형은 centerCol 로 좌/우 구분
+	int idxCircle = 0;
+	for (size_t i = 1; i < regions.size(); ++i)
+		if (regions[i].Area() > regions[idxCircle].Area()) idxCircle = static_cast<int>(i);
+	int idxL = -1, idxR = -1;
+	for (int i = 0; i < 3; ++i)
+	{
+		if (i == idxCircle) continue;
+		cv::Point2d c = regions[i].Centroid();
+		if (c.x < 200.0) idxL = i; else idxR = i;
+	}
+	CheckTrue("classified L/R/circle", idxL >= 0 && idxR >= 0 && idxCircle >= 0);
+
+	// get_region_index: 좌사각 내부 점(row=70,col=70) → 정확히 1개, 그 인덱스=idxL
+	std::vector<int> hit = RegionRelation::GetRegionIndex(regions, 70, 70);
+	CheckTrue("get_region_index -> exactly 1", hit.size() == 1);
+	if (hit.size() == 1)
+		CheckTrue("get_region_index -> left square", hit[0] == idxL);
+	// 배경 점 → 0개
+	std::vector<int> none = RegionRelation::GetRegionIndex(regions, 250, 200);
+	CheckTrue("bg point -> 0 region", none.empty());
+
+	// select_shape_std RECTANGLE1 (percent=5): 사각형 2개만(원 fill≈0.785 탈락)
+	std::vector<int> rects = RegionRelation::SelectShapeStd(regions, RegionRelation::STD_RECTANGLE1, 5.0);
+	CheckTrue("select rectangle1 -> 2", rects.size() == 2);
+
+	// select_shape_std MAX_AREA (percent=0): 원 1개
+	std::vector<int> maxa = RegionRelation::SelectShapeStd(regions, RegionRelation::STD_MAX_AREA, 0.0);
+	CheckTrue("select max_area -> 1 (circle)", maxa.size() == 1 && maxa[0] == idxCircle);
+
+	// select_region_spatial: idxL 기준 오른쪽 → idxR, idxCircle(center col 200> L의 70) 포함 가능
+	std::vector<int> rightOf = RegionRelation::SelectRegionSpatial(regions, regions[idxL], RegionRelation::SPATIAL_RIGHT_OF);
+	bool hasR = false;
+	for (size_t i = 0; i < rightOf.size(); ++i) if (rightOf[i] == idxR) hasR = true;
+	CheckTrue("right_of(L) contains R", hasR);
+
+	// find_neighbors: {L} vs {R, circle}. 좌우 사각 간극 = 300-99 = 201.
+	std::vector<Region> set1; set1.push_back(regions[idxL]);
+	std::vector<Region> set2; set2.push_back(regions[idxR]); set2.push_back(regions[idxCircle]);
+	std::vector<std::vector<int> > nnFar = RegionRelation::FindNeighbors(set1, set2, 50.0);
+	CheckTrue("neighbors(dist50) empty", nnFar.size() == 1 && nnFar[0].empty());
+	std::vector<std::vector<int> > nnNear = RegionRelation::FindNeighbors(set1, set2, 250.0);
+	bool foundR = false;
+	if (nnNear.size() == 1)
+		for (size_t i = 0; i < nnNear[0].size(); ++i)
+			if (nnNear[0][i] == 0) foundR = true; // set2[0]=R
+	CheckTrue("neighbors(dist250) finds R", foundR);
+
+	// spatial_relation: L 은 R 의 'left'
+	std::vector<std::string> rel = RegionRelation::SpatialRelation(regions[idxL], regions[idxR], 0.0);
+	bool isLeft = false;
+	for (size_t i = 0; i < rel.size(); ++i) if (rel[i] == "left") isLeft = true;
+	CheckTrue("spatial_relation L left-of R", isLeft);
+
+	// select_shape_proto: prototype=원, DISTANCE_CENTER 로 근접 Region 선택(자기 자신 0거리 포함)
+	std::vector<int> proto = RegionRelation::SelectShapeProto(regions, regions[idxCircle],
+		RegionRelation::PROTO_DISTANCE_CENTER, 0.0, 1.0);
+	bool selfSelected = false;
+	for (size_t i = 0; i < proto.size(); ++i) if (proto[i] == idxCircle) selfSelected = true;
+	CheckTrue("proto distance_center selects self", selfSelected);
+}
+
 int main()
 {
 	std::cout << "GlimRegionFeatures - synthetic validation" << std::endl;
@@ -468,6 +692,11 @@ int main()
 		TestDefaultScoreTable();
 		TestScoreAndRule();
 		TestProfileIni();
+		TestMomentsAndInvariants();
+		TestThicknessProfile();
+		TestRunlengthDistribution();
+		TestHammingDistance();
+		TestRegionRelations();
 	}
 	catch (const cv::Exception& e)
 	{
