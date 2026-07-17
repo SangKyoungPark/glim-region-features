@@ -1,4 +1,4 @@
-// ClusterPanelCtrl.cpp : 군집 탭 산점도/범례 GDI 렌더 구현
+﻿// ClusterPanelCtrl.cpp : 군집 탭 산점도/범례 GDI 렌더 구현
 #include "stdafx.h"
 #include "ClusterPanelCtrl.h"
 

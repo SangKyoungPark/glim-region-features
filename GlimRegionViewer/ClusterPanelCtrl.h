@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ClusterPanelCtrl.h
 // 군집 탭 GDI 직접 렌더 패널(외부 라이브러리 없음).
 //  - 산점도: 선택한 두 raw 특징값 축, 점 색 = cluster_id
