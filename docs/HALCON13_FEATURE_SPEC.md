@@ -187,3 +187,83 @@
 - 0 나눗셈·빈 컨투어·빈 Region 등 위험 연산은 전부 try-catch + 가드
 - 실시간 검사 삽입 전제: 계산기 내부에서 cv::Mat 재할당 최소화, 입력은 const 참조
 - 빌드는 수행하지 않는다 (사용자가 VS에서 직접 빌드)
+
+## 11. Phase 3 — 추가 오퍼레이터 16종 (Halcon13 Regions>Features 재현)
+
+> 원본 문서 각 오퍼레이터 페이지의 반환값 정의를 기준으로 재현.
+> 배열 반환형은 API(벡터)로 제공하고, FeatureVector/CSV 에는 **스칼라 요약**만 추가한다(컬럼 순서 결정적, 기존 컬럼 뒤에 append).
+> 좌표계: 입출력 위치 인자는 Halcon (row, col). 모멘트는 Halcon 관례(첫 인덱스=row)로 재정의(내부 elliptic_axis 의 x=col,y=row 계산과 별개 필드).
+
+### 11.A 단일 Region 특징값 (FeatureCalculator 확장, 우선순위 2 블록)
+
+#### get_region_thickness
+- 정의: 주축(장축)을 x' 로 회전한 좌표계에서 x' 를 1px 구간(bin)으로 나누고, 각 bin 의 수직(y') 방향 두께 = (max y' − min y' + 1) 을 계산한 **프로파일**.
+- 주축각 φ 는 중심 2차 모멘트로 산출(elliptic_axis 와 동일): `φ = 0.5·atan2(2μ11, μ20−μ02)`, 주축 `u=(cosφ,sinφ)`, 수직 `v=(−sinφ,cosφ)`.
+- API: `FeatureCalculator::ComputeThicknessProfile(region, lengthOut) → std::vector<double>` (프로파일, lengthOut=주축 길이=bin 수).
+- CSV 스칼라 요약: `thickness_mean`(빈 구간 제외 평균), `thickness_max`, `thickness_length`(주축 길이).
+- 검증: 120(col)×60(row) 직사각형 → 주축=col, 두께 프로파일 ≈ 60 일정 → mean/max ≈ 60, length ≈ 120.
+
+#### runlength_distribution
+- 정의: 런 길이별 히스토그램. Region 은 런렝스 보관(`region.Runs()`)하므로 O(런수) 집계.
+- API: `FeatureCalculator::ComputeRunlengthDistribution(region) → std::vector<int>` (index=런 길이, value=개수, index 0 미사용).
+- CSV 스칼라 요약: `run_len_min`, `run_len_max`, `run_len_mode`(최빈 길이). (평균은 기존 `mean_run_length` 재사용)
+- 검증: 정사각형(side s) → 분포[s]=s, min=max=mode=s.
+
+#### moments_region_2nd / moments_region_central / moments_region_3rd
+- 원시 모멘트 `m_pq = Σ row^p · col^q` 를 런렝스에서 Faulhaber 부분합으로 O(런수) 누적.
+- 중심(centroid) `r̄=m10/A, c̄=m01/A`.
+- **중심 2차(비정규화)**: `Mu20=Σ(r−r̄)²`, `Mu02=Σ(c−c̄)²`, `Mu11=Σ(r−r̄)(c−c̄)` → CSV `mc_mu20, mc_mu02, mc_mu11` (**moments_region_central**).
+- **중심 2차(정규화 /A)**: `M20=Mu20/A`(row 분산), `M02=Mu02/A`(col 분산), `M11=Mu11/A`. 주축 관성 `Ia,Ib` = 공분산행렬 `[[M20,M11],[M11,M02]]` 의 고유값(Ia=대, Ib=소) → CSV `m2nd_m20, m2nd_m02, m2nd_m11, m2nd_ia, m2nd_ib` (**moments_region_2nd**).
+- **중심 3차(정규화 /A)**: `Mu30, Mu03, Mu21, Mu12` 표준 전개 후 `/A` → CSV `m3rd_m30, m3rd_m03, m3rd_m21, m3rd_m12` (**moments_region_3rd**).
+  - `Mu30=m30−3r̄·m20+2A·r̄³`, `Mu03=m03−3c̄·m02+2A·c̄³`, `Mu21=m21−2r̄·m11−c̄·m20+2A·r̄²c̄`, `Mu12=m12−2c̄·m11−r̄·m02+2A·c̄²r̄`.
+- 검증: 120×60 직사각형 → M20=(60²−1)/12≈299.92, M02=(120²−1)/12≈1199.92, M11≈0, Ia=M02, Ib=M20. 대칭이라 3차≈0.
+
+#### moments_region_2nd_rel_invar (상대 불변 PHI1, PHI2)
+- 스케일 정규화 `η_pq = Mu_pq / A²` (2차). 회전 불변량:
+  - `PHI1 = η20 + η02`
+  - `PHI2 = (η20 − η02)² + 4·η11²`
+- CSV: `moment_phi1, moment_phi2`.
+- 검증: 원판 → `PHI1 = 1/(2π) ≈ 0.15915` (스케일·회전 불변).
+
+#### moments_region_central_invar (중심 불변 PSI1~PSI4)
+- 스케일 불변 `η` 기반(Hu 와 별개, 본 재현 정의 — 문서 명시):
+  - `PSI1 = η20`, `PSI2 = η11`, `PSI3 = η02`, `PSI4 = η20·η02 − η11²`(스케일 불변 판별식)
+- CSV: `moment_psi1..moment_psi4`.
+
+### 11.B Region 간 관계/질의 (신규 모듈 `UseCase/RegionRelation.{h,cpp}`)
+
+무상태 static 함수 집합. 입력 const 참조, 재진입 안전.
+
+| 오퍼레이터 | 함수 | 정의/반환 |
+|---|---|---|
+| find_neighbors | `FindNeighbors(regions1, regions2, maxDistance)` | 각 regions1[i] 에 대해 경계 최소거리 ≤ maxDistance 인 regions2 인덱스. bbox 간극 하한으로 빠른 배제. maxDistance≤0 이면 픽셀 교집합>0(접촉/겹침)만 이웃 |
+| hamming_distance | `HammingDistance(r1,r2, Distance, Similarity)` | `Distance=A1+A2−2·|R1∩R2|`(대칭차), `Similarity=1−Distance/(A1+A2)` |
+| hamming_distance_norm | `HammingDistanceNorm(r1,r2, normFactor, DistanceNorm, Similarity)` | `DistanceNorm=Distance/normFactor`(normFactor≤0 이면 원값), Similarity 동일 |
+| get_region_index | `GetRegionIndex(regions, row, col)` | (row,col) 픽셀을 포함하는 모든 Region 인덱스 (bbox 배제→런 검사) |
+| select_region_point | `SelectRegionPoint(regions, row, col)` | 픽셀 포함 Region 선택(= get_region_index) |
+| select_region_spatial | `SelectRegionSpatial(regions, reference, dir)` | 무게중심 기준 방향(LEFT/RIGHT/ABOVE/BELOW) 관계로 선택 |
+| spatial_relation | `SpatialRelation(r1, r2, percent)` | bbox 축 비교로 관계 문자열 집합 {left,right,above,below,over}. percent=경계 완화(폭/높이 대비) |
+| select_shape_proto | `SelectShapeProto(regions, prototype, feature, min, max)` | prototype 과의 feature(distance_center/distance_contour/overlap/overlap_abs) 값이 [min,max] 인 Region 선택 |
+| select_shape_std | `SelectShapeStd(regions, shape, percent)` | max_area(면적≥max·(1−p)), rectangle1(area/bboxArea≥1−p), rectangle2(area/minAreaRect≥1−p) |
+
+- 교집합 픽셀 수: 두 bbox 겹침 ROI 로컬 마스크 AND 로 안전 계수(먼 Region 은 즉시 0).
+- 컨투어 최소거리: 교집합>0 이면 0, 아니면 외곽 컨투어 점쌍 최소 유클리드 거리.
+- 검증: 겹치는 60×60 두 사각형(겹침 30×60=1800) → Distance=3600, Similarity=0.5. 동일 Region → Distance=0, Similarity=1. 3-blob 이미지로 get_region_index/select_shape_std/spatial_relation/find_neighbors 확인.
+
+### 11.C Score 테이블 갱신 (8.1 확장)
+
+기본 스코어 테이블(`DefaultConfigs`)에 추가(위치성·각도 제외 원칙 유지, 모멘트 raw 값은 분류기 입력이므로 Score 제외, 불변량·크기성만 추가):
+
+| feature | vMin | vMax | dir | 비고 |
+|---|---|---|---|---|
+| thickness_mean | 1 | 500 | inc | 주축 두께 평균(px) |
+| thickness_max | 1 | 500 | inc | 주축 두께 최대(px) |
+| run_len_max | 1 | 500 | inc | 최대 런 길이 |
+| moment_phi1 | 0 | 1 | inc | 회전 불변 |
+| moment_phi2 | 0 | 0.5 | inc | 회전 불변 |
+| moment_psi1 | 0 | 0.5 | inc | 스케일 불변 |
+| moment_psi2 | 0 | 0.5 | inc | 스케일 불변 |
+| moment_psi3 | 0 | 0.5 | inc | 스케일 불변 |
+| moment_psi4 | 0 | 0.1 | inc | 스케일 불변 판별식 |
+
+> 모멘트 불변량 범위는 보수적 초기값이며 현장 데이터로 튜닝 대상. raw 모멘트(m2nd_*, mc_*, m3rd_*)와 런 min/mode, thickness_length 는 CSV 원시 컬럼으로만 출력(Score 미부여).
