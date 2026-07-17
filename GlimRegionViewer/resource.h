@@ -57,11 +57,27 @@
 #define IDC_STATIC_PKERNEL_LABEL        1049
 #define IDC_EDIT_PKERNEL                1050
 
+// Cluster tab controls (created dynamically)
+#define IDC_STATIC_CLFEAT_LABEL         1051
+#define IDC_COMBO_CLFEATSET             1052
+#define IDC_STATIC_CLSCALE_LABEL        1053
+#define IDC_COMBO_CLSCALE               1054
+#define IDC_STATIC_CLK_LABEL            1055
+#define IDC_EDIT_CLK                    1056
+#define IDC_STATIC_CLKMAX_LABEL         1057
+#define IDC_EDIT_CLKMAX                 1058
+#define IDC_BTN_CLUSTER                 1059
+#define IDC_STATIC_CLX_LABEL            1060
+#define IDC_COMBO_CLX                   1061
+#define IDC_STATIC_CLY_LABEL            1062
+#define IDC_COMBO_CLY                   1063
+#define IDC_CLUSTER_PANEL               1064
+
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        101
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1051
+#define _APS_NEXT_CONTROL_VALUE         1065
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

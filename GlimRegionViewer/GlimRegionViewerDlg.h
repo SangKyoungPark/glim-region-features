@@ -14,6 +14,7 @@
 #include "PreviewPanelCtrl.h"
 #include "ResultCardCtrl.h"
 #include "ChartPanelCtrl.h"
+#include "ClusterPanelCtrl.h"
 #include "ImageViewCtrl.h"
 
 class CGlimRegionViewerDlg : public CDialogEx
@@ -24,7 +25,7 @@ public:
 	enum { IDD = IDD_GLIMREGIONVIEWER_DIALOG };
 
 	// 탭 인덱스
-	enum { TAB_HOME = 0, TAB_SETTINGS = 1, TAB_RESULTS = 2, TAB_ANALYSIS = 3, TAB_COUNT = 4 };
+	enum { TAB_HOME = 0, TAB_SETTINGS = 1, TAB_RESULTS = 2, TAB_ANALYSIS = 3, TAB_CLUSTER = 4, TAB_COUNT = 5 };
 
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);
@@ -42,6 +43,8 @@ protected:
 	afx_msg void OnBinarizeChanged();
 	afx_msg void OnHistFeatChanged();
 	afx_msg void OnParamEditChanged();     // 이진화 파라미터/스케일 에딧 변경 → 미리보기 갱신
+	afx_msg void OnBnClickedRunCluster();  // 군집 탭: 군집화 실행
+	afx_msg void OnClusterAxisChanged();   // 군집 탭: 산점도 축 변경
 	afx_msg void OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnFeatureListItemChanged(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnTabSelChange(NMHDR* pNMHDR, LRESULT* pResult);
@@ -57,6 +60,10 @@ private:
 	void UpdateBinarizeParamVisibility(); // 모드별 파라미터 에딧 표시/숨김
 	void PopulateProfileCombo();   // profiles\*.ini 탐색
 	void PopulateHistFeatCombo();
+	void PopulateClusterCombos();  // 군집 탭 콤보(프리셋/스케일/축) 채우기
+	// 현재 프리셋 콤보 선택에 해당하는 군집 입력 특징 이름 목록
+	std::vector<std::string> ClusterFeatureNames() const;
+	void ResetClusterState();      // 분석 재실행 등으로 결과가 바뀔 때 군집 결과 무효화
 	void SetStatus(const CString& text);
 	CString CurrentProfilePath();
 
@@ -120,8 +127,17 @@ private:
 	CPreviewPanelCtrl m_preview;
 	CResultCardCtrl m_cards;
 	CChartPanelCtrl m_chart;
+	CClusterPanelCtrl m_clusterPanel;
 	CImageViewCtrl m_detailView;
 	CStatic m_staticHome;
+
+	// 군집 탭 컨트롤
+	CComboBox m_comboClFeatSet;   // 특징 프리셋(Shape 12종 / 전체 스칼라)
+	CComboBox m_comboClScale;     // 스케일(zscore/minmax/robust)
+	CComboBox m_comboClX;         // 산점도 X축 특징
+	CComboBox m_comboClY;         // 산점도 Y축 특징
+	CEdit m_editClK;              // K (0 = 자동 추천)
+	CEdit m_editClKMax;           // 자동 추천 상한
 
 	// 데이터
 	std::vector<std::string> m_files;   // 폴더 내 이미지 전체 경로
@@ -139,6 +155,12 @@ private:
 	std::vector<GrfView::RegionResult> m_results;        // 폴더 전체 분석 결과(카드/차트/홈) — UI 스레드 전용
 	std::vector<GrfView::RegionResult> m_pendingResults; // 워커 스레드 전용 출력 버퍼(완료 후 swap → m_results)
 	GrfView::ThumbCache m_thumbCache;
+
+	// 군집 결과(m_results 와 병렬, UI 스레드 전용). 분석 재실행 시 무효화.
+	std::vector<int> m_clusterLabels;
+	std::vector<int> m_clusterSizes;
+	int m_clusterK;
+	double m_clusterSilhouette;
 
 	Grf::ProfileLoader m_profile;
 	bool m_profileLoaded;

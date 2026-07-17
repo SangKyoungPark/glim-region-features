@@ -110,6 +110,7 @@
     <ClInclude Include="PreviewPanelCtrl.h" />
     <ClInclude Include="ResultCardCtrl.h" />
     <ClInclude Include="ChartPanelCtrl.h" />
+    <ClInclude Include="ClusterPanelCtrl.h" />
     <ClInclude Include="ImageViewCtrl.h" />
   </ItemGroup>
   <ItemGroup>
@@ -123,6 +124,7 @@
     <ClCompile Include="PreviewPanelCtrl.cpp" />
     <ClCompile Include="ResultCardCtrl.cpp" />
     <ClCompile Include="ChartPanelCtrl.cpp" />
+    <ClCompile Include="ClusterPanelCtrl.cpp" />
     <ClCompile Include="ImageViewCtrl.cpp" />
   </ItemGroup>
   <ItemGroup>

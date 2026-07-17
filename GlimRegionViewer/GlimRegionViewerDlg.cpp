@@ -88,6 +88,8 @@ CGlimRegionViewerDlg::CGlimRegionViewerDlg(CWnd* pParent /*=NULL*/)
 	, m_analysisFailed(false)
 	, m_analyzing(false)
 	, m_analysisTotal(0)
+	, m_clusterK(0)
+	, m_clusterSilhouette(0.0)
 {
 	m_hIcon = AfxGetApp()->LoadStandardIcon(IDI_APPLICATION);
 	// 결과 탭 상세 이미지 영역(좌:카드 / 우:상세)
@@ -109,6 +111,9 @@ BEGIN_MESSAGE_MAP(CGlimRegionViewerDlg, CDialogEx)
 	ON_CBN_SELCHANGE(IDC_COMBO_PROFILE, &CGlimRegionViewerDlg::OnProfileChanged)
 	ON_CBN_SELCHANGE(IDC_COMBO_BINARIZE, &CGlimRegionViewerDlg::OnBinarizeChanged)
 	ON_CBN_SELCHANGE(IDC_COMBO_HISTFEAT, &CGlimRegionViewerDlg::OnHistFeatChanged)
+	ON_BN_CLICKED(IDC_BTN_CLUSTER, &CGlimRegionViewerDlg::OnBnClickedRunCluster)
+	ON_CBN_SELCHANGE(IDC_COMBO_CLX, &CGlimRegionViewerDlg::OnClusterAxisChanged)
+	ON_CBN_SELCHANGE(IDC_COMBO_CLY, &CGlimRegionViewerDlg::OnClusterAxisChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_TH, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_OFFSET, &CGlimRegionViewerDlg::OnParamEditChanged)
 	ON_EN_KILLFOCUS(IDC_EDIT_WK_KERNEL, &CGlimRegionViewerDlg::OnParamEditChanged)
@@ -150,6 +155,7 @@ BOOL CGlimRegionViewerDlg::OnInitDialog()
 		SetupControls();
 		PopulateProfileCombo();
 		PopulateHistFeatCombo();
+		PopulateClusterCombos();
 		BuildPageControlLists();
 		ShowPage(TAB_SETTINGS);
 	}
@@ -183,6 +189,7 @@ void CGlimRegionViewerDlg::SetupTabs()
 	m_tab.InsertItem(TAB_SETTINGS, _T("설정"));
 	m_tab.InsertItem(TAB_RESULTS, _T("결과"));
 	m_tab.InsertItem(TAB_ANALYSIS, _T("분석"));
+	m_tab.InsertItem(TAB_CLUSTER, _T("군집"));
 	m_tab.SetCurSel(TAB_SETTINGS);
 }
 
@@ -405,6 +412,64 @@ void CGlimRegionViewerDlg::SetupControls()
 	m_chart.CreateCtrl(this, CRect(18, 76, kCR, kCB), IDC_CHART_PANEL);
 	m_chart.SetData(&m_results, m_profileLoaded, std::vector<std::string>());
 
+	// ========== 군집 탭 ==========
+	{
+		// Row1: 특징 프리셋 / 스케일 / K / Kmax / 실행 버튼
+		CStatic* lf = new CStatic();
+		lf->Create(_T("Features"), WS_CHILD | SS_CENTERIMAGE, CRect(18, kCY, 76, kCY + 24), this, IDC_STATIC_CLFEAT_LABEL);
+		lf->SetFont(pFont);
+		m_comboClFeatSet.Create(WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+			CRect(78, kCY, 248, kCY + 200), this, IDC_COMBO_CLFEATSET);
+		m_comboClFeatSet.SetFont(pFont);
+
+		CStatic* ls = new CStatic();
+		ls->Create(_T("Scale"), WS_CHILD | SS_CENTERIMAGE, CRect(262, kCY, 302, kCY + 24), this, IDC_STATIC_CLSCALE_LABEL);
+		ls->SetFont(pFont);
+		m_comboClScale.Create(WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+			CRect(304, kCY, 414, kCY + 200), this, IDC_COMBO_CLSCALE);
+		m_comboClScale.SetFont(pFont);
+
+		CStatic* lk = new CStatic();
+		lk->Create(_T("K(0=auto)"), WS_CHILD | SS_CENTERIMAGE, CRect(428, kCY, 496, kCY + 24), this, IDC_STATIC_CLK_LABEL);
+		lk->SetFont(pFont);
+		m_editClK.Create(WS_CHILD | WS_TABSTOP | WS_BORDER | ES_NUMBER,
+			CRect(498, kCY + 1, 540, kCY + 23), this, IDC_EDIT_CLK);
+		m_editClK.SetFont(pFont);
+		m_editClK.SetWindowText(_T("0"));
+
+		CStatic* lm = new CStatic();
+		lm->Create(_T("Kmax"), WS_CHILD | SS_CENTERIMAGE, CRect(554, kCY, 592, kCY + 24), this, IDC_STATIC_CLKMAX_LABEL);
+		lm->SetFont(pFont);
+		m_editClKMax.Create(WS_CHILD | WS_TABSTOP | WS_BORDER | ES_NUMBER,
+			CRect(594, kCY + 1, 636, kCY + 23), this, IDC_EDIT_CLKMAX);
+		m_editClKMax.SetFont(pFont);
+		m_editClKMax.SetWindowText(_T("8"));
+
+		CButton* b = new CButton();
+		b->Create(_T("군집화 실행"), WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
+			CRect(kCR - 150, kCY, kCR, kCY + 24), this, IDC_BTN_CLUSTER);
+		b->SetFont(pFont);
+
+		// Row2: 산점도 축 선택
+		const int cr2 = 74;
+		CStatic* lx = new CStatic();
+		lx->Create(_T("X"), WS_CHILD | SS_CENTERIMAGE, CRect(18, cr2, 34, cr2 + 24), this, IDC_STATIC_CLX_LABEL);
+		lx->SetFont(pFont);
+		m_comboClX.Create(WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+			CRect(36, cr2, 196, cr2 + 240), this, IDC_COMBO_CLX);
+		m_comboClX.SetFont(pFont);
+
+		CStatic* ly = new CStatic();
+		ly->Create(_T("Y"), WS_CHILD | SS_CENTERIMAGE, CRect(210, cr2, 226, cr2 + 24), this, IDC_STATIC_CLY_LABEL);
+		ly->SetFont(pFont);
+		m_comboClY.Create(WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL,
+			CRect(228, cr2, 388, cr2 + 240), this, IDC_COMBO_CLY);
+		m_comboClY.SetFont(pFont);
+
+		m_clusterPanel.CreateCtrl(this, CRect(18, 104, kCR, kCB), IDC_CLUSTER_PANEL);
+		m_clusterPanel.SetData(&m_results, NULL, 0, 0.0, NULL);
+	}
+
 	// 상태 라벨 위치 조정
 	CWnd* status = GetDlgItem(IDC_STATIC_STATUS);
 	if (status)
@@ -452,6 +517,20 @@ void CGlimRegionViewerDlg::BuildPageControlLists()
 	int analysis[] = { IDC_STATIC_HISTFEAT_LABEL, IDC_COMBO_HISTFEAT, IDC_CHART_PANEL };
 	for (size_t i = 0; i < sizeof(analysis) / sizeof(analysis[0]); ++i)
 		m_pageCtrls[TAB_ANALYSIS].push_back(analysis[i]);
+
+	// 군집
+	int cluster[] = {
+		IDC_STATIC_CLFEAT_LABEL, IDC_COMBO_CLFEATSET,
+		IDC_STATIC_CLSCALE_LABEL, IDC_COMBO_CLSCALE,
+		IDC_STATIC_CLK_LABEL, IDC_EDIT_CLK,
+		IDC_STATIC_CLKMAX_LABEL, IDC_EDIT_CLKMAX,
+		IDC_BTN_CLUSTER,
+		IDC_STATIC_CLX_LABEL, IDC_COMBO_CLX,
+		IDC_STATIC_CLY_LABEL, IDC_COMBO_CLY,
+		IDC_CLUSTER_PANEL
+	};
+	for (size_t i = 0; i < sizeof(cluster) / sizeof(cluster[0]); ++i)
+		m_pageCtrls[TAB_CLUSTER].push_back(cluster[i]);
 }
 
 void CGlimRegionViewerDlg::ShowPage(int tab)
@@ -548,16 +627,16 @@ void CGlimRegionViewerDlg::PopulateProfileCombo()
 
 void CGlimRegionViewerDlg::PopulateHistFeatCombo()
 {
+	// 기본 스코어 테이블(전 스칼라, 고정 순서)에서 동적 생성 —
+	//  엔진에 특징값이 추가되면 콤보에 자동 반영된다.
 	m_comboHistFeat.ResetContent();
-	const LPCTSTR feats[] = {
-		_T("area"), _T("circularity"), _T("convexity"), _T("roundness"),
-		_T("anisometry"), _T("compactness"), _T("rectangularity"),
-		_T("contlength"), _T("diameter"), _T("holes")
-	};
-	for (int i = 0; i < 10; ++i)
-		m_comboHistFeat.AddString(feats[i]);
+	const std::vector<Grf::ScoreConfig>& defs = Grf::ScoreNormalizer::DefaultConfigs();
+	for (size_t i = 0; i < defs.size(); ++i)
+		m_comboHistFeat.AddString(ToCStr(defs[i].m_featureName));
+	if (m_comboHistFeat.GetCount() == 0)
+		m_comboHistFeat.AddString(_T("area"));
 	m_comboHistFeat.SetCurSel(0);
-	m_chart.SetHistogramFeature("area");
+	m_chart.SetHistogramFeature(defs.empty() ? "area" : defs[0].m_featureName);
 }
 
 void CGlimRegionViewerDlg::SetStatus(const CString& text)
@@ -1020,6 +1099,9 @@ void CGlimRegionViewerDlg::FinalizeAnalysis()
 	std::vector<std::string> scoreNames = Grf::CsvExporter::ScoreFeatureNames(pp);
 	m_chart.SetData(&m_results, m_profileLoaded, scoreNames);
 
+	// 군집 탭: 결과가 바뀌었으므로 이전 군집 라벨 무효화
+	ResetClusterState();
+
 	UpdateHomeSummary();
 	UpdateWindowTitle();
 
@@ -1330,6 +1412,162 @@ void CGlimRegionViewerDlg::OnHistFeatChanged()
 	CString s;
 	m_comboHistFeat.GetLBText(sel, s);
 	m_chart.SetHistogramFeature(ToStd(s));
+}
+
+// ------------------------------------------------------------------
+// 군집 탭
+// ------------------------------------------------------------------
+void CGlimRegionViewerDlg::PopulateClusterCombos()
+{
+	// 특징 프리셋
+	m_comboClFeatSet.ResetContent();
+	m_comboClFeatSet.AddString(_T("Shape 12종(권장)"));
+	m_comboClFeatSet.AddString(_T("전체 스칼라"));
+	m_comboClFeatSet.SetCurSel(0);
+
+	// 스케일 모드(엔진 ClusterParams.m_scaleMode 순서와 일치: 0=zscore 1=minmax 2=robust)
+	m_comboClScale.ResetContent();
+	m_comboClScale.AddString(_T("z-score"));
+	m_comboClScale.AddString(_T("min-max"));
+	m_comboClScale.AddString(_T("robust"));
+	m_comboClScale.SetCurSel(0);
+
+	// 산점도 축(전 스칼라 목록). 기본 X=area, Y=circularity.
+	m_comboClX.ResetContent();
+	m_comboClY.ResetContent();
+	const std::vector<Grf::ScoreConfig>& defs = Grf::ScoreNormalizer::DefaultConfigs();
+	int selX = 0, selY = 0;
+	for (size_t i = 0; i < defs.size(); ++i)
+	{
+		m_comboClX.AddString(ToCStr(defs[i].m_featureName));
+		m_comboClY.AddString(ToCStr(defs[i].m_featureName));
+		if (defs[i].m_featureName == "area")
+			selX = static_cast<int>(i);
+		if (defs[i].m_featureName == "circularity")
+			selY = static_cast<int>(i);
+	}
+	if (m_comboClX.GetCount() == 0)
+	{
+		m_comboClX.AddString(_T("area"));
+		m_comboClY.AddString(_T("circularity"));
+	}
+	m_comboClX.SetCurSel(selX);
+	m_comboClY.SetCurSel(selY);
+	OnClusterAxisChanged();
+}
+
+std::vector<std::string> CGlimRegionViewerDlg::ClusterFeatureNames() const
+{
+	std::vector<std::string> names;
+	const int preset = m_comboClFeatSet.GetCurSel();
+	if (preset == 1)
+	{
+		// 전체 스칼라(기본 스코어 테이블 순서)
+		const std::vector<Grf::ScoreConfig>& defs = Grf::ScoreNormalizer::DefaultConfigs();
+		for (size_t i = 0; i < defs.size(); ++i)
+			names.push_back(defs[i].m_featureName);
+	}
+	else
+	{
+		// Shape 12종: 스케일 불변 형상계수 큐레이션(설계 문서 프리셋).
+		//  위치성(row/col)·각도(phi) 값은 군집 입력에서 제외한다.
+		static const char* kShape[] = {
+			"circularity", "compactness", "convexity", "rectangularity",
+			"roundness", "anisometry", "bulkiness", "structure_factor",
+			"aspect_ratio", "fill_ratio", "inner_outer_ratio", "k_factor"
+		};
+		for (size_t i = 0; i < sizeof(kShape) / sizeof(kShape[0]); ++i)
+			names.push_back(kShape[i]);
+	}
+	return names;
+}
+
+void CGlimRegionViewerDlg::ResetClusterState()
+{
+	m_clusterLabels.clear();
+	m_clusterSizes.clear();
+	m_clusterK = 0;
+	m_clusterSilhouette = 0.0;
+	m_clusterPanel.SetData(&m_results, NULL, 0, 0.0, NULL);
+}
+
+void CGlimRegionViewerDlg::OnBnClickedRunCluster()
+{
+	if (m_analyzing)
+		return;
+	if (m_results.empty())
+	{
+		SetStatus(_T("군집화할 결과가 없습니다. [설정] 탭에서 분석을 먼저 실행하세요."));
+		return;
+	}
+
+	try
+	{
+		std::vector<std::string> names = ClusterFeatureNames();
+		if (names.empty())
+		{
+			SetStatus(_T("군집 입력 특징이 없습니다."));
+			return;
+		}
+
+		// FeatureVector → FeatureMatrix (행 순서 = m_results 순서 = 라벨 순서)
+		Grf::FeatureMatrix mat;
+		mat.SetColumns(names);
+		std::vector<double> vals(names.size());
+		for (size_t i = 0; i < m_results.size(); ++i)
+		{
+			for (size_t f = 0; f < names.size(); ++f)
+				vals[f] = m_results[i].fv.GetByName(names[f]);
+			mat.AddSample(m_results[i].fileName, m_results[i].regionIndex, vals);
+		}
+
+		Grf::ClusterParams cp;
+		cp.m_features = names;
+		const int scaleSel = m_comboClScale.GetCurSel();
+		cp.m_scaleMode = (scaleSel < 0) ? 0 : scaleSel;
+		cp.m_k = GetEditInt(IDC_EDIT_CLK, 0);          // 0 이하 = 자동(실루엣 추천)
+		cp.m_kMax = GetEditInt(IDC_EDIT_CLKMAX, 8);
+
+		SetStatus(_T("군집화 계산 중..."));
+		Grf::ClusterResult cr = Grf::ClusterEngine().Run(mat, cp);
+		if (!cr.m_ok)
+		{
+			CString msg;
+			msg.Format(_T("군집화 실패: %s"), (LPCTSTR)ToCStr(cr.m_error));
+			SetStatus(msg);
+			return;
+		}
+
+		m_clusterLabels = cr.m_labels;
+		m_clusterSizes = cr.m_clusterSizes;
+		m_clusterK = cr.m_k;
+		m_clusterSilhouette = cr.m_silhouette;
+
+		m_clusterPanel.SetData(&m_results, &m_clusterLabels,
+			m_clusterK, m_clusterSilhouette, &m_clusterSizes);
+
+		CString msg;
+		msg.Format(_T("군집화 완료: %d regions → K=%d, silhouette=%.3f"),
+			static_cast<int>(m_results.size()), m_clusterK, m_clusterSilhouette);
+		SetStatus(msg);
+	}
+	catch (...)
+	{
+		SetStatus(_T("군집화 중 오류가 발생했습니다."));
+	}
+}
+
+void CGlimRegionViewerDlg::OnClusterAxisChanged()
+{
+	CString sx, sy;
+	const int ix = m_comboClX.GetCurSel();
+	const int iy = m_comboClY.GetCurSel();
+	if (ix >= 0)
+		m_comboClX.GetLBText(ix, sx);
+	if (iy >= 0)
+		m_comboClY.GetLBText(iy, sy);
+	if (!sx.IsEmpty() && !sy.IsEmpty())
+		m_clusterPanel.SetAxes(ToStd(sx), ToStd(sy));
 }
 
 void CGlimRegionViewerDlg::OnFileListItemChanged(NMHDR* pNMHDR, LRESULT* pResult)
