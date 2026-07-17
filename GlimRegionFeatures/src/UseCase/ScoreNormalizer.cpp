@@ -76,6 +76,17 @@ const std::vector<ScoreConfig>& ScoreNormalizer::DefaultConfigs()
 		t.push_back(ScoreConfig("k_factor",         0.0,    5.0,  true));
 		t.push_back(ScoreConfig("l_factor",         0.0,    5.0,  true));
 		t.push_back(ScoreConfig("mean_run_length",  1.0,  500.0,  true));
+		// Phase 3: 두께/런분포 요약(크기 성격 → Score 의미 있음)
+		t.push_back(ScoreConfig("thickness_mean",   1.0,  500.0,  true));
+		t.push_back(ScoreConfig("thickness_max",    1.0,  500.0,  true));
+		t.push_back(ScoreConfig("run_len_max",      1.0,  500.0,  true));
+		// Phase 3: 모멘트 불변량(스케일·회전 불변 형상 기술자 → 보수적 범위, 튜닝 대상)
+		t.push_back(ScoreConfig("moment_phi1",      0.0,    1.0,  true));
+		t.push_back(ScoreConfig("moment_phi2",      0.0,    0.5,  true));
+		t.push_back(ScoreConfig("moment_psi1",      0.0,    0.5,  true));
+		t.push_back(ScoreConfig("moment_psi2",      0.0,    0.5,  true));
+		t.push_back(ScoreConfig("moment_psi3",      0.0,    0.5,  true));
+		t.push_back(ScoreConfig("moment_psi4",      0.0,    0.1,  true));
 		return t;
 	}();
 	return s_table;

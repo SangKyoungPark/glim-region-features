@@ -85,6 +85,44 @@ struct FeatureVector {
 	double fillRatio;      // A / Rect2 면적
 	double innerOuterRatio;// inner_circle.r / smallest_circle.r
 
+	// --- (Phase 3) get_region_thickness (주축 방향 두께 프로파일 요약) ---
+	double thicknessMean;  // 주축 방향 두께 평균
+	double thicknessMax;   // 주축 방향 두께 최대
+	double thicknessLength;// 주축 방향 길이(프로파일 구간 수)
+
+	// --- (Phase 3) runlength_distribution (런 길이 분포 요약) ---
+	int runLenMin;   // 최소 런 길이
+	int runLenMax;   // 최대 런 길이
+	int runLenMode;  // 최빈 런 길이
+
+	// --- (Phase 3) moments_region_2nd (정규화 중심 2차 모멘트, Halcon row/col) ---
+	double m2ndM20;  // (1/A)Σ(r-rc)^2  (row 분산)
+	double m2ndM02;  // (1/A)Σ(c-cc)^2  (col 분산)
+	double m2ndM11;  // (1/A)Σ(r-rc)(c-cc)
+	double m2ndIa;   // 주축 관성 최대 고유값
+	double m2ndIb;   // 주축 관성 최소 고유값
+
+	// --- (Phase 3) moments_region_central (비정규화 중심 2차 모멘트) ---
+	double mcMu20;   // Σ(r-rc)^2
+	double mcMu02;   // Σ(c-cc)^2
+	double mcMu11;   // Σ(r-rc)(c-cc)
+
+	// --- (Phase 3) moments_region_3rd (정규화 중심 3차 모멘트, /A) ---
+	double m3rdM30;  // (1/A)Σ(r-rc)^3
+	double m3rdM03;  // (1/A)Σ(c-cc)^3
+	double m3rdM21;  // (1/A)Σ(r-rc)^2(c-cc)
+	double m3rdM12;  // (1/A)Σ(r-rc)(c-cc)^2
+
+	// --- (Phase 3) moments_region_2nd_rel_invar (회전 불변 PHI) ---
+	double momentPhi1; // η20+η02
+	double momentPhi2; // (η20-η02)^2 + 4η11^2
+
+	// --- (Phase 3) moments_region_central_invar (스케일 불변 PSI) ---
+	double momentPsi1; // η20
+	double momentPsi2; // η11
+	double momentPsi3; // η02
+	double momentPsi4; // η20·η02 − η11^2
+
 	FeatureVector();
 
 	// 이름으로 특징값 조회(스코어/룰 엔진용). 미지원 이름은 0.0 반환.

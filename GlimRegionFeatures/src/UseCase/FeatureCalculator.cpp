@@ -56,6 +56,11 @@ FeatureVector FeatureCalculator::Compute(const Region& region) const
 			ComputeInnerRectangle(region, fv);
 			ComputeRunlength(region, fv);
 			ComputeDerived(fv);
+
+			// Phase 3 확장 특징값
+			ComputeMoments(region, fv);
+			ComputeThicknessSummary(region, fv);
+			ComputeRunlengthDistSummary(region, fv);
 		}
 	}
 	catch (const cv::Exception&)
@@ -583,6 +588,312 @@ void FeatureCalculator::ComputeDerived(FeatureVector& fv) const
 	// 내외접비 = inner_circle.r / smallest_circle.r
 	if (fv.smallestCircleRadius > kEps)
 		fv.innerOuterRatio = fv.innerCircleRadius / fv.smallestCircleRadius;
+}
+
+// ------------------------------------------------------------------
+// 우선순위 2 (Phase 3 확장)
+// ------------------------------------------------------------------
+
+namespace {
+	// Faulhaber 부분합: Σ_{c=c0}^{c1} c^k (k=0..3). c0<=c1 전제.
+	//  음수 col 은 이 라이브러리에서 발생하지 않으나(이미지 좌표), 일반식으로 안전 처리.
+	void PowerSums(int c0, int c1, double& s0, double& s1, double& s2, double& s3)
+	{
+		// F1(k)=Σ_{0..k} i, F2(k)=Σ i^2, F3(k)=Σ i^3  (k>=0)
+		// 구간합 = F(c1) - F(c0-1). c0-1 < 0 이면 0.
+		struct Faul {
+			static double F1(double k) { return (k < 0.0) ? 0.0 : k * (k + 1.0) * 0.5; }
+			static double F2(double k) { return (k < 0.0) ? 0.0 : k * (k + 1.0) * (2.0 * k + 1.0) / 6.0; }
+			static double F3(double k) { if (k < 0.0) return 0.0; const double t = k * (k + 1.0) * 0.5; return t * t; }
+		};
+		const double a = static_cast<double>(c0) - 1.0;
+		const double b = static_cast<double>(c1);
+		const double n = static_cast<double>(c1 - c0 + 1);
+		s0 = n;
+		s1 = Faul::F1(b) - Faul::F1(a);
+		s2 = Faul::F2(b) - Faul::F2(a);
+		s3 = Faul::F3(b) - Faul::F3(a);
+	}
+}
+
+void FeatureCalculator::ComputeMoments(const Region& region, FeatureVector& fv) const
+{
+	// Halcon row/col 관례로 원시 모멘트 m_pq (p=row 지수, q=col 지수)를 런렝스에서
+	// 닫힌 형식(Faulhaber)으로 누적한다. O(런수).
+	//  - moments_region_2nd      : 정규화(/A) 중심 2차 모멘트 M20,M02,M11 + 주축 관성 Ia,Ib
+	//  - moments_region_central  : 비정규화 중심 2차 모멘트 Mu20,Mu02,Mu11
+	//  - moments_region_3rd      : 정규화(/A) 중심 3차 모멘트 M30,M03,M21,M12
+	//  - moments_region_2nd_rel_invar   : 회전 불변 PHI1,PHI2  (η = mu/A^2)
+	//  - moments_region_central_invar   : 스케일 불변 PSI1..PSI4 (η)
+	const std::vector<Run>& runs = region.Runs();
+	if (runs.empty())
+		return;
+
+	double m00 = 0.0, m10 = 0.0, m01 = 0.0;              // 0~1차
+	double m20 = 0.0, m02 = 0.0, m11 = 0.0;              // 2차
+	double m30 = 0.0, m03 = 0.0, m21 = 0.0, m12 = 0.0;   // 3차
+
+	for (size_t i = 0; i < runs.size(); ++i)
+	{
+		const Run& run = runs[i];
+		const double r = static_cast<double>(run.m_row);
+		double s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0;  // Σc^0..3
+		PowerSums(run.m_colStart, run.m_colEnd, s0, s1, s2, s3);
+
+		m00 += s0;
+		m10 += r * s0;          // Σ row
+		m01 += s1;              // Σ col
+		m20 += r * r * s0;      // Σ row^2
+		m02 += s2;              // Σ col^2
+		m11 += r * s1;          // Σ row·col
+		m30 += r * r * r * s0;  // Σ row^3
+		m03 += s3;              // Σ col^3
+		m21 += r * r * s1;      // Σ row^2·col
+		m12 += r * s2;          // Σ row·col^2
+	}
+
+	if (m00 <= 0.0)
+		return;
+
+	const double A = m00;
+	const double rc = m10 / A; // row 중심
+	const double cc = m01 / A; // col 중심
+
+	// 비정규화 중심 2차
+	const double mu20 = m20 - A * rc * rc;
+	const double mu02 = m02 - A * cc * cc;
+	const double mu11 = m11 - A * rc * cc;
+
+	// 비정규화 중심 3차 (표준 전개)
+	const double mu30 = m30 - 3.0 * rc * m20 + 2.0 * A * rc * rc * rc;
+	const double mu03 = m03 - 3.0 * cc * m02 + 2.0 * A * cc * cc * cc;
+	const double mu21 = m21 - 2.0 * rc * m11 - cc * m20 + 2.0 * A * rc * rc * cc;
+	const double mu12 = m12 - 2.0 * cc * m11 - rc * m02 + 2.0 * A * cc * cc * rc;
+
+	// moments_region_central (비정규화)
+	fv.mcMu20 = mu20;
+	fv.mcMu02 = mu02;
+	fv.mcMu11 = mu11;
+
+	// moments_region_2nd (정규화 /A)
+	const double n20 = mu20 / A;
+	const double n02 = mu02 / A;
+	const double n11 = mu11 / A;
+	fv.m2ndM20 = n20;
+	fv.m2ndM02 = n02;
+	fv.m2ndM11 = n11;
+
+	// 주축 관성 Ia,Ib = 공분산 행렬 [[n20,n11],[n11,n02]] 의 고유값
+	{
+		const double half = 0.5 * (n20 + n02);
+		const double dd = 0.5 * (n20 - n02);
+		const double disc = std::sqrt(dd * dd + n11 * n11);
+		fv.m2ndIa = half + disc;
+		fv.m2ndIb = half - disc;
+	}
+
+	// moments_region_3rd (정규화 /A)
+	fv.m3rdM30 = mu30 / A;
+	fv.m3rdM03 = mu03 / A;
+	fv.m3rdM21 = mu21 / A;
+	fv.m3rdM12 = mu12 / A;
+
+	// 스케일 불변 η_pq = mu_pq / A^((p+q)/2 + 1). 2차: /A^2.
+	const double A2 = A * A;
+	if (A2 > kEps)
+	{
+		const double e20 = mu20 / A2;
+		const double e02 = mu02 / A2;
+		const double e11 = mu11 / A2;
+
+		// 2nd_rel_invar (회전 불변)
+		fv.momentPhi1 = e20 + e02;
+		fv.momentPhi2 = (e20 - e02) * (e20 - e02) + 4.0 * e11 * e11;
+
+		// central_invar (스케일 불변)
+		fv.momentPsi1 = e20;
+		fv.momentPsi2 = e11;
+		fv.momentPsi3 = e02;
+		fv.momentPsi4 = e20 * e02 - e11 * e11;
+	}
+}
+
+std::vector<double> FeatureCalculator::ComputeThicknessProfile(const Region& region, double& lengthOut) const
+{
+	// get_region_thickness: 주축(장축)을 x' 로 회전한 좌표에서 x' 1px 구간마다
+	// 수직(y') 방향 두께(max-min+1)를 계산해 프로파일을 만든다.
+	lengthOut = 0.0;
+	std::vector<double> profile;
+
+	try
+	{
+		const std::vector<Run>& runs = region.Runs();
+		if (runs.empty())
+			return profile;
+
+		// 주축 각도 phi 를 중심 2차 모멘트로 계산(ComputeEllipticAxis 와 동일 관례).
+		const RawMoments rm = region.ComputeRawMoments(); // x=col, y=row
+		if (rm.m00 <= 0.0)
+			return profile;
+		const double xbar = rm.m10 / rm.m00;
+		const double ybar = rm.m01 / rm.m00;
+		const double mu20 = rm.m20 / rm.m00 - xbar * xbar; // col 분산
+		const double mu02 = rm.m02 / rm.m00 - ybar * ybar; // row 분산
+		const double mu11 = rm.m11 / rm.m00 - xbar * ybar;
+		const double phi = 0.5 * std::atan2(2.0 * mu11, mu20 - mu02);
+
+		const double ux = std::cos(phi), uy = std::sin(phi); // 주축(+x=col,+y=row)
+		const double vx = -std::sin(phi), vy = std::cos(phi); // 수직
+
+		const cv::Point2d c = region.Centroid(); // (x=col, y=row)
+
+		// 1차 스캔: t 범위 파악
+		double tMin = std::numeric_limits<double>::max();
+		double tMax = -std::numeric_limits<double>::max();
+		for (size_t i = 0; i < runs.size(); ++i)
+		{
+			const Run& run = runs[i];
+			const double dy = static_cast<double>(run.m_row) - c.y;
+			for (int x = run.m_colStart; x <= run.m_colEnd; ++x)
+			{
+				const double dx = static_cast<double>(x) - c.x;
+				const double t = dx * ux + dy * uy;
+				if (t < tMin) tMin = t;
+				if (t > tMax) tMax = t;
+			}
+		}
+		if (tMax < tMin)
+			return profile;
+
+		const int bins = static_cast<int>(std::floor(tMax - tMin + 0.5)) + 1;
+		if (bins <= 0 || bins > 100000000) // 방어적 상한
+			return profile;
+
+		std::vector<double> sMin(bins, std::numeric_limits<double>::max());
+		std::vector<double> sMax(bins, -std::numeric_limits<double>::max());
+		std::vector<unsigned char> used(bins, 0);
+
+		// 2차 스캔: 각 bin 에 수직 좌표 s 누적
+		for (size_t i = 0; i < runs.size(); ++i)
+		{
+			const Run& run = runs[i];
+			const double dy = static_cast<double>(run.m_row) - c.y;
+			for (int x = run.m_colStart; x <= run.m_colEnd; ++x)
+			{
+				const double dx = static_cast<double>(x) - c.x;
+				const double t = dx * ux + dy * uy;
+				const double s = dx * vx + dy * vy;
+				int b = static_cast<int>(std::floor(t - tMin + 0.5));
+				if (b < 0) b = 0;
+				if (b >= bins) b = bins - 1;
+				if (s < sMin[b]) sMin[b] = s;
+				if (s > sMax[b]) sMax[b] = s;
+				used[b] = 1;
+			}
+		}
+
+		profile.reserve(bins);
+		for (int b = 0; b < bins; ++b)
+		{
+			if (used[b])
+				profile.push_back(sMax[b] - sMin[b] + 1.0); // 픽셀 폭 포함
+			else
+				profile.push_back(0.0);
+		}
+		lengthOut = static_cast<double>(bins);
+	}
+	catch (const cv::Exception&) {}
+	catch (...) {}
+
+	return profile;
+}
+
+void FeatureCalculator::ComputeThicknessSummary(const Region& region, FeatureVector& fv) const
+{
+	double length = 0.0;
+	std::vector<double> profile = ComputeThicknessProfile(region, length);
+	if (profile.empty())
+		return;
+
+	double sum = 0.0, maxV = 0.0;
+	int cnt = 0;
+	for (size_t i = 0; i < profile.size(); ++i)
+	{
+		if (profile[i] <= 0.0)
+			continue; // 빈 구간 제외
+		sum += profile[i];
+		if (profile[i] > maxV) maxV = profile[i];
+		++cnt;
+	}
+	if (cnt > 0)
+		fv.thicknessMean = sum / static_cast<double>(cnt);
+	fv.thicknessMax = maxV;
+	fv.thicknessLength = length;
+}
+
+std::vector<int> FeatureCalculator::ComputeRunlengthDistribution(const Region& region) const
+{
+	// runlength_distribution: 히스토그램[len] = 길이 len 인 런의 개수.
+	std::vector<int> hist;
+	try
+	{
+		const std::vector<Run>& runs = region.Runs();
+		if (runs.empty())
+			return hist;
+
+		int maxLen = 0;
+		for (size_t i = 0; i < runs.size(); ++i)
+		{
+			const int len = runs[i].Length();
+			if (len > maxLen) maxLen = len;
+		}
+		if (maxLen <= 0)
+			return hist;
+
+		hist.assign(static_cast<size_t>(maxLen) + 1, 0); // index 0 미사용
+		for (size_t i = 0; i < runs.size(); ++i)
+		{
+			const int len = runs[i].Length();
+			if (len >= 1 && len <= maxLen)
+				hist[len]++;
+		}
+	}
+	catch (...) {}
+	return hist;
+}
+
+void FeatureCalculator::ComputeRunlengthDistSummary(const Region& region, FeatureVector& fv) const
+{
+	const std::vector<Run>& runs = region.Runs();
+	if (runs.empty())
+		return;
+
+	int minLen = std::numeric_limits<int>::max();
+	int maxLen = 0;
+	for (size_t i = 0; i < runs.size(); ++i)
+	{
+		const int len = runs[i].Length();
+		if (len < minLen) minLen = len;
+		if (len > maxLen) maxLen = len;
+	}
+	if (maxLen <= 0)
+		return;
+
+	// 최빈 런 길이(mode): 분포 히스토그램에서 최대 빈도.
+	std::vector<int> hist = ComputeRunlengthDistribution(region);
+	int mode = minLen, bestCnt = -1;
+	for (size_t len = 1; len < hist.size(); ++len)
+	{
+		if (hist[len] > bestCnt)
+		{
+			bestCnt = hist[len];
+			mode = static_cast<int>(len);
+		}
+	}
+
+	fv.runLenMin = minLen;
+	fv.runLenMax = maxLen;
+	fv.runLenMode = mode;
 }
 
 } // namespace Grf
