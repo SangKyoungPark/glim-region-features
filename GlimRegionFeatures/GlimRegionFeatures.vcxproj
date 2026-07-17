@@ -84,6 +84,7 @@
     <ClInclude Include="src\UseCase\FeatureCalculator.h" />
     <ClInclude Include="src\UseCase\ScoreNormalizer.h" />
     <ClInclude Include="src\UseCase\SelectShapeRule.h" />
+    <ClInclude Include="src\UseCase\RegionRelation.h" />
     <ClInclude Include="src\Profile\IniFile.h" />
     <ClInclude Include="src\Profile\ProfileLoader.h" />
   </ItemGroup>
@@ -96,6 +97,7 @@
     <ClCompile Include="src\UseCase\FeatureCalculator.cpp" />
     <ClCompile Include="src\UseCase\ScoreNormalizer.cpp" />
     <ClCompile Include="src\UseCase\SelectShapeRule.cpp" />
+    <ClCompile Include="src\UseCase\RegionRelation.cpp" />
     <ClCompile Include="src\Profile\IniFile.cpp" />
     <ClCompile Include="src\Profile\ProfileLoader.cpp" />
   </ItemGroup>

@@ -55,5 +55,6 @@
 #include "UseCase/FeatureCalculator.h"
 #include "UseCase/ScoreNormalizer.h"
 #include "UseCase/SelectShapeRule.h"
+#include "UseCase/RegionRelation.h"
 #include "Profile/IniFile.h"
 #include "Profile/ProfileLoader.h"
