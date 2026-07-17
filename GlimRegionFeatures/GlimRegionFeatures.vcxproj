@@ -78,6 +78,8 @@
     <ClInclude Include="src\Domain\Region.h" />
     <ClInclude Include="src\Domain\FeatureVector.h" />
     <ClInclude Include="src\Domain\ScoreResult.h" />
+    <ClInclude Include="src\Domain\FeatureMatrix.h" />
+    <ClInclude Include="src\Domain\ClusterResult.h" />
     <ClInclude Include="src\Adapter\RegionExtractor.h" />
     <ClInclude Include="src\Adapter\CsvExporter.h" />
     <ClInclude Include="src\Adapter\IPreprocessor.h" />
@@ -85,12 +87,17 @@
     <ClInclude Include="src\UseCase\ScoreNormalizer.h" />
     <ClInclude Include="src\UseCase\SelectShapeRule.h" />
     <ClInclude Include="src\UseCase\RegionRelation.h" />
+    <ClInclude Include="src\UseCase\FeatureScaler.h" />
+    <ClInclude Include="src\UseCase\ClusterEngine.h" />
+    <ClInclude Include="src\UseCase\KSelector.h" />
     <ClInclude Include="src\Profile\IniFile.h" />
     <ClInclude Include="src\Profile\ProfileLoader.h" />
+    <ClInclude Include="src\Profile\ProfileWriter.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Domain\Region.cpp" />
     <ClCompile Include="src\Domain\FeatureVector.cpp" />
+    <ClCompile Include="src\Domain\FeatureMatrix.cpp" />
     <ClCompile Include="src\Adapter\RegionExtractor.cpp" />
     <ClCompile Include="src\Adapter\CsvExporter.cpp" />
     <ClCompile Include="src\Adapter\IPreprocessor.cpp" />
@@ -98,8 +105,12 @@
     <ClCompile Include="src\UseCase\ScoreNormalizer.cpp" />
     <ClCompile Include="src\UseCase\SelectShapeRule.cpp" />
     <ClCompile Include="src\UseCase\RegionRelation.cpp" />
+    <ClCompile Include="src\UseCase\FeatureScaler.cpp" />
+    <ClCompile Include="src\UseCase\ClusterEngine.cpp" />
+    <ClCompile Include="src\UseCase\KSelector.cpp" />
     <ClCompile Include="src\Profile\IniFile.cpp" />
     <ClCompile Include="src\Profile\ProfileLoader.cpp" />
+    <ClCompile Include="src\Profile\ProfileWriter.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

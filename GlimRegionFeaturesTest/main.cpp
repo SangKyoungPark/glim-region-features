@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <string>
 #include <vector>
+#include <map>
 #include <cmath>
 
 #include <opencv2/core.hpp>
@@ -674,6 +675,133 @@ void TestRegionRelations()
 	CheckTrue("proto distance_center selects self", selfSelected);
 }
 
+// 결정성 검증용 2군집 합성 FeatureMatrix(feature "a","b").
+//  그룹A(4행): (0,0),(0.1,0.1),(-0.1,-0.1),(0.2,-0.1) — 원점 근방
+//  그룹B(4행): (10,10),(10.1,9.9),(9.9,10.1),(10.2,10.2) — (10,10) 근방(뚜렷이 분리)
+FeatureMatrix BuildTwoClusterMatrix()
+{
+	FeatureMatrix m;
+	m.SetColumns({ "a", "b" });
+	m.AddSample("g1.png", 0, { 0.0, 0.0 });
+	m.AddSample("g1.png", 1, { 0.1, 0.1 });
+	m.AddSample("g1.png", 2, { -0.1, -0.1 });
+	m.AddSample("g1.png", 3, { 0.2, -0.1 });
+	m.AddSample("g2.png", 0, { 10.0, 10.0 });
+	m.AddSample("g2.png", 1, { 10.1, 9.9 });
+	m.AddSample("g2.png", 2, { 9.9, 10.1 });
+	m.AddSample("g2.png", 3, { 10.2, 10.2 });
+	return m;
+}
+
+void TestClusterEngineCore()
+{
+	std::cout << "\n=== [17] cluster engine core (determinism / silhouette / KSelector) ===" << std::endl;
+
+	FeatureMatrix matrix = BuildTwoClusterMatrix();
+	CheckTrue("FeatureMatrix AddSample count == 8", matrix.SampleCount() == 8);
+	CheckTrue("FeatureMatrix ColumnCount == 2", matrix.ColumnCount() == 2);
+
+	ClusterParams params;
+	params.m_features = { "a", "b" };
+	params.m_scaleMode = SCALE_ZSCORE;
+	params.m_k = 2;
+	params.m_seed = 12345;
+	params.m_attempts = 5;
+
+	ClusterEngine engine;
+	ClusterResult r1 = engine.Run(matrix, params);
+	CheckTrue("cluster run1 ok", r1.m_ok);
+	if (!r1.m_ok) { std::cout << "  error: " << r1.m_error << std::endl; return; }
+
+	ClusterResult r2 = engine.Run(matrix, params);
+	CheckTrue("cluster run2 ok", r2.m_ok);
+
+	// 결정성: 동일 입력 -> 동일 라벨(순서 = AddSample 호출 순서와 1:1)
+	bool sameLabels = (r1.m_labels.size() == r2.m_labels.size());
+	for (size_t i = 0; sameLabels && i < r1.m_labels.size(); ++i)
+		if (r1.m_labels[i] != r2.m_labels[i]) sameLabels = false;
+	CheckTrue("run1==run2 labels (determinism)", sameLabels);
+
+	CheckTrue("labels.size() == 8", r1.m_labels.size() == 8);
+	if (r1.m_labels.size() == 8)
+	{
+		int labelA = r1.m_labels[0];
+		int labelB = r1.m_labels[4];
+		CheckTrue("group A internally same label", r1.m_labels[1] == labelA && r1.m_labels[2] == labelA && r1.m_labels[3] == labelA);
+		CheckTrue("group B internally same label", r1.m_labels[5] == labelB && r1.m_labels[6] == labelB && r1.m_labels[7] == labelB);
+		CheckTrue("group A != group B label", labelA != labelB);
+	}
+	CheckTrue("clusterSizes == [4,4]", r1.m_clusterSizes.size() == 2 &&
+		r1.m_clusterSizes[0] == 4 && r1.m_clusterSizes[1] == 4);
+	Check("silhouette (well separated)", r1.m_silhouette, 1.0, 20.0); // 1.0 근방 기대(허용오차 20%)
+
+	// 정준 라벨링: 크기 동률 -> 첫 feature('a') 중심 오름차순 -> 그룹A(≈0)가 label 0 이어야 함
+	CheckTrue("canonical label: group A -> cluster 0", r1.m_labels[0] == 0);
+
+	// 안전 가드: K > 샘플 수 -> 실패 + 에러 메시지
+	ClusterParams badParams = params;
+	badParams.m_k = 100;
+	ClusterResult rBad = engine.Run(matrix, badParams);
+	CheckTrue("K>N guarded -> ok=false", !rBad.m_ok);
+	CheckTrue("K>N guarded -> error message present", !rBad.m_error.empty());
+
+	// KSelector: 뚜렷이 분리된 2군집 데이터는 K=2 에서 실루엣 최대여야 함
+	KSelector selector;
+	KSelector::Curve curve = selector.Sweep(matrix, params, 2, 4);
+	CheckTrue("KSelector sweep ok", curve.m_ok);
+	if (curve.m_ok)
+	{
+		double bestSil = -2.0; int bestK = 0;
+		for (size_t i = 0; i < curve.m_k.size(); ++i)
+			if (curve.m_silhouette[i] > bestSil) { bestSil = curve.m_silhouette[i]; bestK = curve.m_k[i]; }
+		CheckTrue("recommendedK matches max-silhouette K", bestK == curve.m_recommendedK);
+		CheckTrue("recommendedK == 2 (well separated synthetic)", curve.m_recommendedK == 2);
+	}
+}
+
+void TestProfileWriterDraft()
+{
+	std::cout << "\n=== [18] cluster-to-profile INI draft (ProfileWriter) ===" << std::endl;
+
+	FeatureMatrix matrix = BuildTwoClusterMatrix();
+
+	// ClusterEngine 실제 실행 결과를 그대로 사용(엔진-라이터 연동 검증까지 겸함)
+	ClusterParams params;
+	params.m_features = { "a", "b" };
+	params.m_k = 2;
+	params.m_seed = 12345;
+	ClusterEngine engine;
+	ClusterResult result = engine.Run(matrix, params);
+	CheckTrue("cluster run ok (for profile draft)", result.m_ok);
+	if (!result.m_ok) return;
+
+	ProfileWriteParams pwParams;
+	pwParams.m_profileName = "ClusterDraftTest";
+	pwParams.m_percentileLow = 0.0;
+	pwParams.m_percentileHigh = 100.0;
+	pwParams.m_labels[result.m_labels[0]] = "TESTCODE"; // 그룹A(라벨 0)에 코드 부여
+
+	ProfileWriter writer;
+	bool ok = false; std::string err;
+	std::string ini = writer.BuildIni(matrix, result, pwParams, params.m_features, ok, err);
+	CheckTrue("BuildIni ok", ok);
+	if (!ok) { std::cout << "  error: " << err << std::endl; return; }
+
+	CheckTrue("ini contains [Profile]", ini.find("[Profile]") != std::string::npos);
+	CheckTrue("ini contains [Score]", ini.find("[Score]") != std::string::npos);
+	CheckTrue("ini contains [SelectShape]", ini.find("[SelectShape]") != std::string::npos);
+	CheckTrue("ini contains codes = TESTCODE", ini.find("codes = TESTCODE") != std::string::npos);
+	CheckTrue("ini contains [Rule_TESTCODE]", ini.find("[Rule_TESTCODE]") != std::string::npos);
+	CheckTrue("ini contains feature 'a' rule line", ini.find("\na = ") != std::string::npos || ini.find("a = ") != std::string::npos);
+
+	// 실패 경로: 라벨 없음
+	ProfileWriteParams emptyLabelParams;
+	bool ok2 = true; std::string err2;
+	std::string ini2 = writer.BuildIni(matrix, result, emptyLabelParams, params.m_features, ok2, err2);
+	CheckTrue("BuildIni without labels -> ok=false", !ok2);
+	CheckTrue("BuildIni without labels -> error message present", !err2.empty());
+}
+
 int main()
 {
 	std::cout << "GlimRegionFeatures - synthetic validation" << std::endl;
@@ -697,6 +825,8 @@ int main()
 		TestRunlengthDistribution();
 		TestHammingDistance();
 		TestRegionRelations();
+		TestClusterEngineCore();
+		TestProfileWriterDraft();
 	}
 	catch (const cv::Exception& e)
 	{
