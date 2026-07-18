@@ -802,6 +802,64 @@ void TestProfileWriterDraft()
 	CheckTrue("BuildIni without labels -> error message present", !err2.empty());
 }
 
+void TestImageFeatureExtractor()
+{
+	std::cout << "\n=== [19] ImageFeatureExtractor facade (128x128, black+white defect) ===" << std::endl;
+
+	// 128x128 크롭 모사: 중간톤 배경(128) + 어두운 흑점(40) + 밝은 백점(220)
+	cv::Mat img(128, 128, CV_8UC1, cv::Scalar(128));
+	cv::circle(img, cv::Point(40, 40), 10, cv::Scalar(40), -1);  // 흑 불량(어두운 원)
+	cv::circle(img, cv::Point(90, 90), 12, cv::Scalar(220), -1); // 백 불량(밝은 원)
+
+	// 결정적 검증을 위해 FIXED 임계값으로 극성만 확인(OTSU 3봉 히스토그램 모호성 회피).
+	ImageExtractOptions opt;
+	opt.m_minArea = 5;
+	opt.m_black.m_binarize.m_mode = BINMODE_FIXED;
+	opt.m_black.m_binarize.m_threshold = 90.0;   // <90 = 흑점(40)만 Region
+	opt.m_white.m_binarize.m_mode = BINMODE_FIXED;
+	opt.m_white.m_binarize.m_threshold = 180.0;  // >180 = 백점(220)만 Region
+
+	ImageFeatureExtractor extractor;
+	std::vector<DefectSample> samples = extractor.Extract(img, opt);
+
+	CheckTrue("total samples == 2 (1 black + 1 white)", samples.size() == 2);
+
+	int nB = 0, nW = 0;
+	double blackArea = 0.0, whiteArea = 0.0;
+	bool featureMatchesRegion = true;
+	for (size_t i = 0; i < samples.size(); ++i)
+	{
+		if (samples[i].m_channel == 'B') { nB++; blackArea = samples[i].m_features.area; }
+		if (samples[i].m_channel == 'W') { nW++; whiteArea = samples[i].m_features.area; }
+		// facade 가 채운 feature.area 는 Region.Area() 와 일치해야 한다(배선 검증)
+		if (samples[i].m_features.area != (double)samples[i].m_region.Area())
+			featureMatchesRegion = false;
+	}
+	CheckTrue("exactly one 'B' channel", nB == 1);
+	CheckTrue("exactly one 'W' channel", nW == 1);
+	CheckTrue("feature.area == region.Area() (wiring)", featureMatchesRegion);
+
+	// 흑점 r=10 → 면적 ~314, 백점 r=12 → 면적 ~452 (라스터화 오차 허용)
+	Check("black defect area", blackArea, kPi * 10.0 * 10.0, 15.0);
+	Check("white defect area", whiteArea, kPi * 12.0 * 12.0, 15.0);
+
+	// 채널 비활성화: 백 채널 끄면 흑만 반환
+	ImageExtractOptions blackOnly = opt;
+	blackOnly.m_white.m_enabled = false;
+	std::vector<DefectSample> bo = extractor.Extract(img, blackOnly);
+	CheckTrue("white disabled -> only black sample", bo.size() == 1 && bo[0].m_channel == 'B');
+
+	// 기본 옵션 극성/모드 검증(OTSU + DARK / BRIGHT)
+	ImageExtractOptions def;
+	CheckTrue("default black polarity = DARK", def.m_black.m_binarize.m_polarity == POLARITY_DARK);
+	CheckTrue("default white polarity = BRIGHT", def.m_white.m_binarize.m_polarity == POLARITY_BRIGHT);
+	CheckTrue("default black mode = OTSU", def.m_black.m_binarize.m_mode == BINMODE_OTSU);
+
+	// 빈 이미지 방어
+	std::vector<DefectSample> empty = extractor.Extract(cv::Mat(), opt);
+	CheckTrue("empty image -> empty result", empty.empty());
+}
+
 int main()
 {
 	std::cout << "GlimRegionFeatures - synthetic validation" << std::endl;
@@ -827,6 +885,7 @@ int main()
 		TestRegionRelations();
 		TestClusterEngineCore();
 		TestProfileWriterDraft();
+		TestImageFeatureExtractor();
 	}
 	catch (const cv::Exception& e)
 	{

@@ -1,4 +1,4 @@
-// KSelector.cpp
+﻿// KSelector.cpp
 #include "UseCase/KSelector.h"
 #include "UseCase/FeatureScaler.h"
 

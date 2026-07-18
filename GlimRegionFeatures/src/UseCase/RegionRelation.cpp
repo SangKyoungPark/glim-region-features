@@ -1,4 +1,4 @@
-// RegionRelation.cpp
+﻿// RegionRelation.cpp
 #include "UseCase/RegionRelation.h"
 #include <opencv2/imgproc.hpp> // cv::minAreaRect
 #include <cmath>

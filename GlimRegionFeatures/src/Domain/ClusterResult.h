@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ClusterResult.h
 // Domain 모델: Region 집합의 다차원 feature 공간 군집화 결과.
 // K-means(cv::kmeans) 실행 결과를 원본 특징값 스케일로 복원해 보관한다.

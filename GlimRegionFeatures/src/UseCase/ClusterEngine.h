@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ClusterEngine.h
 // 무상태 UseCase: FeatureMatrix + ClusterParams -> cv::kmeans 기반 다차원 군집화(ClusterResult).
 // "군집 계산 단일 소스"(설계 원칙) — 웹/뷰어는 이 엔진의 실행 결과만 시각화한다.

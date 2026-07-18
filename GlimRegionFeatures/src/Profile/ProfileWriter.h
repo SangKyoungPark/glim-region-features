@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ProfileWriter.h
 // Profile 계층: ClusterResult + 사용자 라벨(clusterId->불량코드) -> 프로파일 INI 초안 생성.
 // ProfileLoader(INI -> 룰 엔진)의 역방향. 분위수(envelope) 계산은 여기(엔진)에서 수행하여

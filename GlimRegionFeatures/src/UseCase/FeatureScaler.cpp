@@ -1,4 +1,4 @@
-// FeatureScaler.cpp
+﻿// FeatureScaler.cpp
 #include "UseCase/FeatureScaler.h"
 #include <algorithm>
 #include <cmath>

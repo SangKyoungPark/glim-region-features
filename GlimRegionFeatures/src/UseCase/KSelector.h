@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // KSelector.h
 // 무상태 UseCase: K=kMin..kMax 스윕 -> 실루엣/관성(inertia) 곡선 + 실루엣 최대 K 추천.
 // 재진입 안전(멤버 없음). ClusterEngine::ComputeSilhouette 를 재사용해 "군집 계산 단일 소스"
