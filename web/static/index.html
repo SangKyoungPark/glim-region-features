@@ -14,6 +14,7 @@
     <button class="tab-btn" data-tab="settings">설정</button>
     <button class="tab-btn" data-tab="results">결과</button>
     <button class="tab-btn" data-tab="analysis">분석</button>
+    <button class="tab-btn" data-tab="cluster">군집</button>
   </nav>
   <span id="runStatus" class="status"></span>
 </header>
@@ -218,6 +219,62 @@
       <div id="histChart" class="chart"></div>
     </div>
     <div id="analysisEmpty" class="empty big">아직 실행 결과가 없습니다. 설정 탭에서 분석을 실행하세요.</div>
+  </section>
+
+  <!-- ===================== 군집 탭 ===================== -->
+  <section id="tab-cluster" class="tab-page">
+    <div class="set-card">
+      <h2>군집 분석 <small style="font-weight:400;color:#9aa3b2">(C++ 엔진 cv::kmeans · 웹은 라벨 수신·산점도만)</small></h2>
+      <p class="hint">이미지 폴더 → 흑/백 이진화(설정 탭 방식·TH 재사용) → Halcon feature 산출 → C++ 엔진으로 군집화합니다. 계산은 exe 가 유일 소스이며, 웹은 군집 라벨을 받아 raw 2축 산점도로 표시만 합니다.</p>
+      <div class="field">
+        <label for="clFolder">폴더 경로 <small style="font-weight:400;color:#9aa3b2">(비우면 설정 탭 폴더 사용)</small></label>
+        <input id="clFolder" type="text" placeholder="예: D:/128Crop/NullWrinkle" spellcheck="false">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="clFeatures">Feature 프리셋</label>
+          <select id="clFeatures">
+            <option value="shape8">형상 8종 (shape8)</option>
+            <option value="all">전체 (all)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="clScale">스케일</label>
+          <select id="clScale">
+            <option value="zscore">zscore (표준화)</option>
+            <option value="minmax">minmax</option>
+            <option value="robust">robust</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="clK">K (0=자동)</label>
+          <input id="clK" type="number" min="0" value="0">
+        </div>
+        <div class="field">
+          <label for="clKMax">K 최대 (자동 탐색)</label>
+          <input id="clKMax" type="number" min="2" max="12" value="8">
+        </div>
+      </div>
+      <div class="run-actions">
+        <button id="clRunBtn">군집화 실행</button>
+        <span class="hint">이진화 방식/임계값은 설정 탭 값을 사용합니다.</span>
+      </div>
+    </div>
+
+    <div class="chart-card" id="clResultCard" style="display:none">
+      <div class="hist-head">
+        <h2>군집 산점도 <small>(raw 2축 · 뷰어와 동일 방식)</small></h2>
+        <label class="inline-field">X축
+          <select id="clXAxis"></select>
+        </label>
+        <label class="inline-field">Y축
+          <select id="clYAxis"></select>
+        </label>
+      </div>
+      <div id="clScatter" class="chart"></div>
+      <div id="clLegend" class="legend"></div>
+    </div>
+    <div id="clusterEmpty" class="empty big">아직 군집 결과가 없습니다. 위에서 군집화를 실행하세요.</div>
   </section>
 </main>
 

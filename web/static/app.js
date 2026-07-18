@@ -11,6 +11,7 @@ const state = {
   previewFiles: [],
   previewSel: null,   // 선택된 미리보기 파일명
   presets: [],        // 서버 저장 프리셋 목록
+  cluster: null,      // 군집 결과(/api/cluster 응답, 축 변경 시 재요청 없이 재사용)
 };
 
 const RECENT_KEY = "glimregion.recent.v1";
@@ -92,6 +93,18 @@ function scaleApplied() {
 const FEAT_PALETTE = ["#4ea1ff", "#35c98b", "#ffb454", "#ff6ec7", "#a78bfa", "#f97316", "#22d3ee", "#e879f9"];
 function featColor(i) { return FEAT_PALETTE[i % FEAT_PALETTE.length]; }
 
+// 군집 팔레트 — MFC 뷰어 CClusterPanelCtrl::ClusterColor 와 동일(tab10 계열, 시인성 우선).
+const CLUSTER_PALETTE = [
+  "rgb(80,160,240)", "rgb(240,130,60)", "rgb(110,210,110)",
+  "rgb(230,90,100)", "rgb(190,130,230)", "rgb(235,205,70)",
+  "rgb(80,210,210)", "rgb(230,120,195)", "rgb(150,150,240)",
+  "rgb(170,220,90)",
+];
+function clusterColor(id) {
+  if (id === null || id === undefined || id < 0) return "#9aa3b2"; // 미할당/노이즈
+  return CLUSTER_PALETTE[id % CLUSTER_PALETTE.length];
+}
+
 // ---------- 탭 전환 ----------
 function showTab(name) {
   document.querySelectorAll(".tab-btn").forEach(b =>
@@ -99,6 +112,11 @@ function showTab(name) {
   document.querySelectorAll(".tab-page").forEach(p =>
     p.classList.toggle("active", p.id === "tab-" + name));
   if (name === "home") renderRecent();
+  if (name === "cluster") {
+    // 군집 탭 폴더가 비어 있으면 설정 탭 폴더를 미리 채움(사용자 재입력 편의)
+    const clf = el("clFolder");
+    if (clf && !clf.value.trim()) clf.value = el("folderPath").value.trim();
+  }
 }
 
 // ---------- 설정 읽기/쓰기 ----------
@@ -786,6 +804,153 @@ function openDetail(r) {
   el("detailOverlay").classList.remove("hidden");
 }
 
+// ---------- 군집(Cluster) ----------
+async function runCluster() {
+  // 폴더: 군집 탭 입력 우선, 비면 설정 탭 폴더 사용
+  const folder = (el("clFolder").value.trim() || el("folderPath").value.trim());
+  if (!folder) {
+    toast("폴더 경로를 입력하세요.", "error");
+    setStatus("폴더 경로를 입력하세요.", "error");
+    el("clFolder").focus();
+    return;
+  }
+  // 이진화는 설정 탭 값 재사용, 군집 파라미터는 군집 탭 입력
+  const s = readSettings();
+  const body = {
+    folderPath: folder,
+    threads: s.threads,
+    polarity: s.polarity, mode: s.mode,
+    thresh: s.thresh, offset: s.offset,
+    kernel: s.kernel, blur: s.blur, response: s.response,
+    blackTh: s.blackTh, whiteTh: s.whiteTh, projKernel: s.projKernel,
+    features: el("clFeatures").value,
+    scaleMode: el("clScale").value,
+    k: parseInt(el("clK").value, 10) || 0,
+    kMax: parseInt(el("clKMax").value, 10) || 8,
+  };
+
+  el("clRunBtn").disabled = true;
+  el("clRunBtn").textContent = "군집화 중...";
+  setStatus("군집화 실행 중... (특징 추출 + kmeans)", "busy");
+  try {
+    const res = await fetch("/api/cluster", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    let data;
+    try { data = await res.json(); }
+    catch (e) { showError(`서버 응답 파싱 실패 (HTTP ${res.status})`); return; }
+    if (!data.ok) {
+      if (data.stderr) console.error("[GlimRegion] cluster exe stderr:\n" + data.stderr);
+      showError(data.error || `군집화 실패 (HTTP ${res.status})`);
+      return;
+    }
+    state.cluster = data;
+    renderClusterAxes();
+    renderClusterScatter();
+    el("clResultCard").style.display = "";
+    el("clusterEmpty").style.display = "none";
+    setStatus(`군집 완료 · K=${data.k} · silhouette=${fmt(data.silhouette, 3)} · ${data.points.length} 점`);
+    toast(`군집 완료 · K=${data.k} · ${data.points.length} 점`, "success");
+  } catch (e) {
+    showError("군집 요청 실패: " + e + " (서버가 실행 중인지 확인하세요)");
+  } finally {
+    el("clRunBtn").disabled = false;
+    el("clRunBtn").textContent = "군집화 실행";
+  }
+}
+
+// 축 콤보 채우기(columns = 사용된 feature). 기본 X=첫째, Y=둘째.
+function renderClusterAxes() {
+  const cols = (state.cluster && state.cluster.columns) || [];
+  const xs = el("clXAxis"), ys = el("clYAxis");
+  if (!xs || !ys) return;
+  const opts = cols.map((c, i) => `<option value="${i}">${esc(c)}</option>`).join("");
+  xs.innerHTML = opts;
+  ys.innerHTML = opts;
+  xs.value = "0";
+  ys.value = cols.length > 1 ? "1" : "0";
+}
+
+// raw 2축 산점도(SVG). 점 색 = cluster 라벨. 축 변경 시 재요청 없이 이 함수만 재호출.
+function renderClusterScatter() {
+  const box = el("clScatter");
+  const cl = state.cluster;
+  if (!cl || !cl.points || !cl.points.length) { box.innerHTML = '<div class="empty">데이터 없음</div>'; return; }
+  const xi = parseInt(el("clXAxis").value, 10) || 0;
+  const yi = parseInt(el("clYAxis").value, 10) || 0;
+
+  // 유한값 점만 사용
+  const pts = cl.points.filter(p => {
+    const vx = p.values[xi], vy = p.values[yi];
+    return typeof vx === "number" && isFinite(vx) && typeof vy === "number" && isFinite(vy);
+  });
+  if (!pts.length) { box.innerHTML = '<div class="empty">선택한 축에 표시할 값이 없습니다.</div>'; return; }
+
+  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity;
+  pts.forEach(p => {
+    const vx = p.values[xi], vy = p.values[yi];
+    if (vx < xmin) xmin = vx; if (vx > xmax) xmax = vx;
+    if (vy < ymin) ymin = vy; if (vy > ymax) ymax = vy;
+  });
+  if (xmin === xmax) { xmax = xmin + 1; xmin -= 1; }
+  if (ymin === ymax) { ymax = ymin + 1; ymin -= 1; }
+  // 약간의 여백
+  const xpad = (xmax - xmin) * 0.04, ypad = (ymax - ymin) * 0.04;
+  xmin -= xpad; xmax += xpad; ymin -= ypad; ymax += ypad;
+
+  const W = 620, H = 420, leftPad = 56, rightPad = 16, topPad = 14, bottomPad = 42;
+  const plotW = W - leftPad - rightPad, plotH = H - topPad - bottomPad;
+  const sx = v => leftPad + ((v - xmin) / (xmax - xmin)) * plotW;
+  const sy = v => topPad + plotH - ((v - ymin) / (ymax - ymin)) * plotH;
+
+  let svg = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  // 축 프레임
+  svg += `<rect x="${leftPad}" y="${topPad}" width="${plotW}" height="${plotH}" fill="none" stroke="#2e3646"></rect>`;
+  // 그리드 + 눈금(5분할)
+  const TICKS = 5;
+  for (let t = 0; t <= TICKS; t++) {
+    const gx = leftPad + (t / TICKS) * plotW;
+    const vx = xmin + (t / TICKS) * (xmax - xmin);
+    svg += `<line x1="${gx}" y1="${topPad}" x2="${gx}" y2="${topPad + plotH}" stroke="#232a36"></line>`;
+    svg += `<text x="${gx}" y="${topPad + plotH + 16}" text-anchor="middle" fill="#9aa3b2" font-size="10">${vx.toFixed(Math.abs(xmax) < 10 ? 2 : 0)}</text>`;
+    const gy = topPad + plotH - (t / TICKS) * plotH;
+    const vy = ymin + (t / TICKS) * (ymax - ymin);
+    svg += `<line x1="${leftPad}" y1="${gy}" x2="${leftPad + plotW}" y2="${gy}" stroke="#232a36"></line>`;
+    svg += `<text x="${leftPad - 8}" y="${gy + 4}" text-anchor="end" fill="#9aa3b2" font-size="10">${vy.toFixed(Math.abs(ymax) < 10 ? 2 : 0)}</text>`;
+  }
+  // 축 라벨
+  const cols = cl.columns || [];
+  svg += `<text x="${leftPad + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#e6e9ef" font-size="11">${esc(cols[xi] || "")}</text>`;
+  svg += `<text x="14" y="${topPad + plotH / 2}" text-anchor="middle" fill="#e6e9ef" font-size="11" transform="rotate(-90 14 ${topPad + plotH / 2})">${esc(cols[yi] || "")}</text>`;
+  // 점
+  pts.forEach(p => {
+    const cx = sx(p.values[xi]), cy = sy(p.values[yi]);
+    const col = clusterColor(p.cluster);
+    svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3" fill="${col}" fill-opacity="0.82">`
+      + `<title>${esc(p.file)} #${p.regionIndex}${p.channel ? " · " + esc(p.channel) : ""} · cluster ${p.cluster}</title></circle>`;
+  });
+  svg += `</svg>`;
+  box.innerHTML = svg;
+
+  renderClusterLegend();
+}
+
+function renderClusterLegend() {
+  const box = el("clLegend");
+  const cl = state.cluster;
+  if (!box || !cl) return;
+  const sizes = cl.clusterSizes || [];
+  let html = `<span class="lg-item" style="font-weight:700">K = ${cl.k}</span>`;
+  html += `<span class="lg-item">Silhouette = ${fmt(cl.silhouette, 3)}</span>`;
+  for (let c = 0; c < cl.k; c++) {
+    const n = (c < sizes.length) ? sizes[c] : 0;
+    html += `<span class="lg-item"><span class="lg-dot" style="background:${clusterColor(c)}"></span>Cluster ${c} (n=${n})</span>`;
+  }
+  box.innerHTML = html;
+}
+
 // ---------- 이벤트 ----------
 document.querySelectorAll(".tab-btn").forEach(btn =>
   btn.addEventListener("click", () => showTab(btn.getAttribute("data-tab"))));
@@ -821,6 +986,12 @@ el("sortDir").addEventListener("click", () => {
   el("sortDir").setAttribute("data-dir", state.sortDir);
   if (state.data) renderGallery();
 });
+// 군집 탭: 실행 버튼 + 축 콤보(재요청 없이 다시 그리기)
+el("clRunBtn").addEventListener("click", runCluster);
+el("clFolder").addEventListener("keydown", e => { if (e.key === "Enter") runCluster(); });
+el("clXAxis").addEventListener("change", () => { if (state.cluster) renderClusterScatter(); });
+el("clYAxis").addEventListener("change", () => { if (state.cluster) renderClusterScatter(); });
+
 el("detailClose").addEventListener("click", () => el("detailOverlay").classList.add("hidden"));
 el("detailOverlay").addEventListener("click", e => { if (e.target === el("detailOverlay")) el("detailOverlay").classList.add("hidden"); });
 
