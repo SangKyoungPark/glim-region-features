@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // FeatureScaler.h
 // 무상태(stateless) UseCase: FeatureMatrix 원시값 -> 스케일 적용 좌표.
 // 재진입 안전(멤버 변수 없음, 모든 계산은 지역변수/인자로만 수행) — 멀티쓰레드 락프리 호출 가능.

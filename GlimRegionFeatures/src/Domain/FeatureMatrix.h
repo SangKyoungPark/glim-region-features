@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // FeatureMatrix.h
 // Domain 모델: 군집화 입력용 N(샘플)xM(특징) 행렬.
 // 각 행은 CSV(result.csv) 의 한 Region 행(RegionIndex>=0)에 대응하며,

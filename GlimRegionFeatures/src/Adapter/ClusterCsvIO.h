@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ClusterCsvIO.h
 // Adapter: 파일 I/O 를 담당(Domain/UseCase 는 파일의 존재를 알지 못한다).
 //  - result.csv(CsvExporter::ExportFolder 산출물) -> FeatureMatrix 로드

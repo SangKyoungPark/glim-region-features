@@ -1,4 +1,4 @@
-// ProfileWriter.cpp
+﻿// ProfileWriter.cpp
 #include "Profile/ProfileWriter.h"
 #include <sstream>
 #include <algorithm>
