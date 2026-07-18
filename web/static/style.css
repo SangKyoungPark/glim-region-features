@@ -1,22 +1,23 @@
-/* GlimRegion 대시보드 - 다크 테마 (검사기 이미지가 잘 보이도록) */
+/* GlimRegion 대시보드 - 도스/터미널 테마 (green phosphor on black) */
 :root {
-  --bg: #12151c;
-  --bg2: #1a1f2b;
-  --bg3: #232a38;
-  --line: #2e3646;
-  --fg: #e6e9ef;
-  --fg-dim: #9aa3b2;
-  --accent: #4ea1ff;
-  --accent2: #35c98b;
-  --warn: #ff5d5d;
+  --bg: #000000;      /* pure black (DOS) */
+  --bg2: #070707;     /* panel — near-black, neutral */
+  --bg3: #121212;     /* input/raised — neutral dark gray */
+  --line: #1c7a3c;    /* phosphor-green border */
+  --fg: #46ff85;      /* bright phosphor green */
+  --fg-dim: #2ea75a;  /* dim green */
+  --accent: #46ff85;  /* bright green (buttons/active = inverted) */
+  --accent2: #ffb642; /* amber (success) */
+  --warn: #ff5555;    /* red alarm */
 }
 * { box-sizing: border-box; }
 body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+  font-family: "Consolas", "DejaVu Sans Mono", "D2Coding", "Courier New", monospace;
   font-size: 14px;
+  text-shadow: 0 0 1px rgba(70, 255, 133, 0.35); /* subtle phosphor glow */
 }
 h1 { font-size: 18px; margin: 0; }
 h2 { font-size: 14px; margin: 0 0 10px; color: var(--fg); }
@@ -264,3 +265,66 @@ main { padding: 18px; max-width: 1500px; margin: 0 auto; }
   .card { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   도스/터미널 테마 오버레이 (green phosphor CRT 느낌)
+   ============================================================ */
+
+/* 각진 모서리 — DOS 박스 느낌 */
+.tab-btn, .toast, .preset-bar select, #runBtn, .ghost-btn,
+.intro-card, .recent-card, .set-card, .recent-item,
+.field input, .field select, .inline-field select,
+.pf-btn, .stat-card, .chart-card, .card, .badge, .filter-btn,
+.sortbox select, #sortDir, .detail-panel, .detail-close,
+.score-mini .sbar, .card .imgs img, .preview-pane img {
+  border-radius: 0 !important;
+}
+
+/* 헤더 대문자 + 자간 (터미널 라벨) */
+h1, h2, .tab-btn { text-transform: uppercase; letter-spacing: 1px; }
+
+/* CRT 스캔라인 오버레이 (약하게) */
+body::after {
+  content: ""; position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,0.16) 3px);
+}
+
+/* 상단바 = 터미널 타이틀바 + 커서 블링크 */
+.topbar { box-shadow: 0 0 12px rgba(70,255,133,0.15); }
+.topbar h1::after { content: " _"; animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* 고스트/필터 버튼: 기본 outline, hover 시 그린 반전 */
+.ghost-btn, .pf-btn, .filter-btn, #sortDir {
+  background: transparent; color: var(--fg); border-color: var(--line);
+}
+.ghost-btn:hover, .pf-btn:hover, .filter-btn:hover {
+  background: var(--fg); color: var(--bg); border-color: var(--fg);
+}
+
+/* 카드/패널 내부 스캔 글로우 */
+.intro-card, .recent-card, .set-card, .stat-card, .chart-card, .card {
+  box-shadow: inset 0 0 0 1px rgba(28,122,60,0.25);
+}
+
+/* 입력 포커스: 그린 캐럿/글로우 */
+.field input:focus, .field select:focus, #clFolder:focus {
+  outline: none; border-color: var(--fg); box-shadow: 0 0 6px rgba(70,255,133,0.4);
+}
+input, select, textarea { caret-color: var(--fg); }
+
+/* 폼 라벨 앞 프롬프트 마커 */
+.field label::before { content: "> "; color: var(--fg-dim); }
+
+/* 모든 버튼 모노스페이스 통일 */
+button { font-family: inherit; }
+
+/* 군집화 실행 = 주 액션 버튼(그린 채움, 도스 버튼) */
+#clRunBtn {
+  background: var(--accent); color: var(--bg); border: 1px solid var(--fg);
+  padding: 10px 22px; font-weight: 700; cursor: pointer; font-size: 14px;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+#clRunBtn:hover { filter: brightness(1.15); }
+#clRunBtn:disabled { opacity: 0.5; cursor: default; }
