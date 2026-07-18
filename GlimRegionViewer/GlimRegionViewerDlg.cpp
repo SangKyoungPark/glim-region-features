@@ -1528,6 +1528,21 @@ void CGlimRegionViewerDlg::OnBnClickedRunCluster()
 		cp.m_k = GetEditInt(IDC_EDIT_CLK, 0);          // 0 이하 = 자동(실루엣 추천)
 		cp.m_kMax = GetEditInt(IDC_EDIT_CLKMAX, 8);
 
+		// 자동 K: 엔진 Run 은 m_k>0 을 요구한다(규약). K<=0 이면 KSelector 로 실루엣 최대 K 를
+		//  먼저 결정한 뒤 엔진에 넘긴다("군집 계산 단일 소스" 유지).
+		const bool autoK = (cp.m_k <= 0);
+		if (autoK)
+		{
+			const int kMax = (cp.m_kMax >= 2) ? cp.m_kMax : 8;
+			Grf::KSelector::Curve curve = Grf::KSelector().Sweep(mat, cp, 2, kMax);
+			if (!curve.m_ok || curve.m_recommendedK < 2)
+			{
+				SetStatus(_T("자동 K 결정 실패 (샘플 수 부족 등). K 값을 직접 지정하세요."));
+				return;
+			}
+			cp.m_k = curve.m_recommendedK;
+		}
+
 		SetStatus(_T("군집화 계산 중..."));
 		Grf::ClusterResult cr = Grf::ClusterEngine().Run(mat, cp);
 		if (!cr.m_ok)
@@ -1547,8 +1562,9 @@ void CGlimRegionViewerDlg::OnBnClickedRunCluster()
 			m_clusterK, m_clusterSilhouette, &m_clusterSizes);
 
 		CString msg;
-		msg.Format(_T("군집화 완료: %d regions → K=%d, silhouette=%.3f"),
-			static_cast<int>(m_results.size()), m_clusterK, m_clusterSilhouette);
+		msg.Format(_T("군집화 완료: %d regions → K=%d%s, silhouette=%.3f"),
+			static_cast<int>(m_results.size()), m_clusterK,
+			autoK ? _T(" (auto)") : _T(""), m_clusterSilhouette);
 		SetStatus(msg);
 	}
 	catch (...)
