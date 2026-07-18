@@ -51,6 +51,9 @@
     <ClInclude Include="src\UseCase\FeatureCalculator.h">
       <Filter>UseCase</Filter>
     </ClInclude>
+    <ClInclude Include="src\UseCase\ImageFeatureExtractor.h">
+      <Filter>UseCase</Filter>
+    </ClInclude>
     <ClInclude Include="src\UseCase\ScoreNormalizer.h">
       <Filter>UseCase</Filter>
     </ClInclude>
@@ -102,6 +105,9 @@
       <Filter>Adapter</Filter>
     </ClCompile>
     <ClCompile Include="src\UseCase\FeatureCalculator.cpp">
+      <Filter>UseCase</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UseCase\ImageFeatureExtractor.cpp">
       <Filter>UseCase</Filter>
     </ClCompile>
     <ClCompile Include="src\UseCase\ScoreNormalizer.cpp">
