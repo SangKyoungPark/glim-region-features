@@ -328,3 +328,19 @@ button { font-family: inherit; }
 }
 #clRunBtn:hover { filter: brightness(1.15); }
 #clRunBtn:disabled { opacity: 0.5; cursor: default; }
+
+/* 산점도 hover 이미지 툴팁 */
+svg .cl-hit { cursor: crosshair; }
+.cl-hovertip {
+  position: fixed; z-index: 10000; pointer-events: none;
+  background: #000; border: 1px solid var(--fg); padding: 6px;
+  box-shadow: 0 0 14px rgba(70, 255, 133, 0.45);
+}
+.cl-hovertip img {
+  display: block; width: 168px; height: 168px; object-fit: contain;
+  background: #000; image-rendering: pixelated; border: 1px solid var(--line);
+}
+.cl-hovertip .cl-tipcap {
+  color: var(--fg); font-size: 11px; margin-top: 5px; max-width: 168px; word-break: break-all;
+}
+.cl-hovertip.hidden { display: none; }

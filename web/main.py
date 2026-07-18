@@ -590,6 +590,7 @@ def _read_cluster_feature_rows(csv_path, feature_cols):
             vals = [_to_float(rec.get(c, "")) for c in feature_cols]
             rows.append({
                 "file": rec.get("FileName", ""),
+                "path": (rec.get("FilePath", "") or "").strip(),  # hover 이미지 툴팁용 원본 경로
                 "regionIndex": ri,
                 "channel": (rec.get("Channel", "") or "").strip(),
                 "values": vals,
@@ -602,6 +603,7 @@ def api_cluster(req: ClusterRequest):
     folder = req.folderPath.strip().strip('"')
     if not folder or not os.path.isdir(folder):
         return JSONResponse({"ok": False, "error": f"폴더를 찾을 수 없습니다: {folder}"}, status_code=400)
+    ALLOWED_DIRS.add(_norm(folder))  # hover 이미지 툴팁(/api/image) 서빙 허용
 
     exe = config.find_batch_exe()
     if not exe:
@@ -709,6 +711,7 @@ def api_cluster(req: ClusterRequest):
         r = feat_rows[i]
         points.append({
             "file": r["file"],
+            "path": r["path"],
             "regionIndex": r["regionIndex"],
             "channel": r["channel"],
             "cluster": labels[i],

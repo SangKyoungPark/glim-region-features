@@ -924,17 +924,73 @@ function renderClusterScatter() {
   const cols = cl.columns || [];
   svg += `<text x="${leftPad + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#e6e9ef" font-size="11">${esc(cols[xi] || "")}</text>`;
   svg += `<text x="14" y="${topPad + plotH / 2}" text-anchor="middle" fill="#e6e9ef" font-size="11" transform="rotate(-90 14 ${topPad + plotH / 2})">${esc(cols[yi] || "")}</text>`;
-  // 점
+  // 점 (보이는 점 + 넓은 투명 히트영역: hover 시 이미지 툴팁)
   pts.forEach(p => {
     const cx = sx(p.values[xi]), cy = sy(p.values[yi]);
     const col = clusterColor(p.cluster);
-    svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3" fill="${col}" fill-opacity="0.82">`
-      + `<title>${esc(p.file)} #${p.regionIndex}${p.channel ? " · " + esc(p.channel) : ""} · cluster ${p.cluster}</title></circle>`;
+    svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3.2" fill="${col}" fill-opacity="0.85" pointer-events="none"></circle>`;
+    svg += `<circle class="cl-hit" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="8" fill="transparent"`
+      + ` data-path="${esc(p.path || "")}" data-file="${esc(p.file)}"`
+      + ` data-region="${p.regionIndex}" data-channel="${esc(p.channel || "")}" data-cluster="${p.cluster}"></circle>`;
   });
   svg += `</svg>`;
   box.innerHTML = svg;
 
+  attachClusterHover(box);
   renderClusterLegend();
+}
+
+// 산점도 hover 이미지 툴팁(고정 위치 div, /api/image 로 크롭 로드)
+function ensureClusterTooltip() {
+  let tt = el("clHoverTip");
+  if (!tt) {
+    tt = document.createElement("div");
+    tt.id = "clHoverTip";
+    tt.className = "cl-hovertip hidden";
+    tt.innerHTML = '<img alt=""><div class="cl-tipcap"></div>';
+    document.body.appendChild(tt);
+  }
+  return tt;
+}
+
+function attachClusterHover(box) {
+  const svg = box.querySelector("svg");
+  if (!svg) return;
+  const tt = ensureClusterTooltip();
+  const img = tt.querySelector("img");
+  const cap = tt.querySelector(".cl-tipcap");
+
+  const moveTip = (e) => {
+    const pad = 16;
+    const w = tt.offsetWidth || 180, h = tt.offsetHeight || 200;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth) x = e.clientX - w - pad;
+    if (y + h > window.innerHeight) y = e.clientY - h - pad;
+    tt.style.left = Math.max(4, x) + "px";
+    tt.style.top = Math.max(4, y) + "px";
+  };
+
+  svg.addEventListener("mouseover", (e) => {
+    const t = e.target;
+    if (!t.classList || !t.classList.contains("cl-hit")) return;
+    const path = t.getAttribute("data-path");
+    const file = t.getAttribute("data-file") || "";
+    const region = t.getAttribute("data-region");
+    const channel = t.getAttribute("data-channel") || "";
+    const cluster = t.getAttribute("data-cluster");
+    if (path) img.src = "/api/image?path=" + encodeURIComponent(path);
+    else img.removeAttribute("src");
+    cap.textContent = `${file} #${region}${channel ? " · " + channel : ""} · cluster ${cluster}`;
+    tt.classList.remove("hidden");
+    moveTip(e);
+  });
+  svg.addEventListener("mousemove", (e) => {
+    if (!tt.classList.contains("hidden")) moveTip(e);
+  });
+  svg.addEventListener("mouseout", (e) => {
+    const t = e.target;
+    if (t.classList && t.classList.contains("cl-hit")) tt.classList.add("hidden");
+  });
 }
 
 function renderClusterLegend() {
