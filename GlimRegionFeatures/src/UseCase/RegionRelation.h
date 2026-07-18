@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // RegionRelation.h
 // Halcon Regions>Features 의 "Region 간 관계/질의" 오퍼레이터 재현(UseCase).
 //  - find_neighbors / hamming_distance / hamming_distance_norm

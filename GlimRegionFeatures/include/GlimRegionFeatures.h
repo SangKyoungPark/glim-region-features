@@ -40,6 +40,14 @@
 //   - cv::Mat 얕은복사: 각 계산은 입력을 읽기만 하고 출력은 새 Mat(지역)로 생성하므로,
 //     동일 입력 Mat 을 여러 쓰레드가 읽는 것은 안전(쓰기 없음).
 //
+// [다차원 feature 공간 Blob 군집화] (신규)
+//   FeatureMatrix(N x M 원시 특징값) -> ClusterEngine::Run() -> ClusterResult(라벨/센트로이드/실루엣).
+//   군집 계산은 이 엔진(cv::kmeans)이 유일한 소스이며, 웹/뷰어는 결과 시각화만 담당한다.
+//   K 미지정 시 KSelector::Sweep() 으로 실루엣 최대 K 를 먼저 구하고 ClusterEngine::Run() 에 넘긴다.
+//   ClusterEngine/KSelector 는 무상태이나, cv::setRNGSeed() 로 OpenCV 전역 RNG 를 설정하므로
+//   군집화 단계는 파일 병렬 파이프라인과 분리된 "단일 스레드 집계 단계"에서 호출할 것(상세: ClusterEngine.h).
+//   자세한 스펙(전처리/K결정/결정성 규칙/clusters.json 스키마)은 docs/CLUSTERING.md 참조.
+//
 // [전처리 GPU 삽입 지점] Adapter/IPreprocessor.h 참조.
 //   전처리(원본→이진화)를 IPreprocessor 로 분리했다. 기본은 CpuPreprocessor(threshold).
 //   GPU PC에서 대형 원본을 다룰 때 CUDA 구현(cv::cuda 빌드 또는 자체 커널)을 이 인터페이스로
@@ -49,12 +57,20 @@
 #include "Domain/Region.h"
 #include "Domain/FeatureVector.h"
 #include "Domain/ScoreResult.h"
+#include "Domain/FeatureMatrix.h"
+#include "Domain/ClusterResult.h"
 #include "Adapter/IPreprocessor.h"
 #include "Adapter/RegionExtractor.h"
 #include "Adapter/CsvExporter.h"
+#include "Adapter/ClusterCsvIO.h"
 #include "UseCase/FeatureCalculator.h"
+#include "UseCase/ImageFeatureExtractor.h"
 #include "UseCase/ScoreNormalizer.h"
 #include "UseCase/SelectShapeRule.h"
 #include "UseCase/RegionRelation.h"
+#include "UseCase/FeatureScaler.h"
+#include "UseCase/ClusterEngine.h"
+#include "UseCase/KSelector.h"
 #include "Profile/IniFile.h"
 #include "Profile/ProfileLoader.h"
+#include "Profile/ProfileWriter.h"

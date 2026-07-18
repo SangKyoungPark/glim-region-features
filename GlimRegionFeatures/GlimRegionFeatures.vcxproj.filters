@@ -30,6 +30,12 @@
     <ClInclude Include="src\Domain\ScoreResult.h">
       <Filter>Domain</Filter>
     </ClInclude>
+    <ClInclude Include="src\Domain\FeatureMatrix.h">
+      <Filter>Domain</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Domain\ClusterResult.h">
+      <Filter>Domain</Filter>
+    </ClInclude>
     <ClInclude Include="src\Adapter\RegionExtractor.h">
       <Filter>Adapter</Filter>
     </ClInclude>
@@ -39,7 +45,13 @@
     <ClInclude Include="src\Adapter\IPreprocessor.h">
       <Filter>Adapter</Filter>
     </ClInclude>
+    <ClInclude Include="src\Adapter\ClusterCsvIO.h">
+      <Filter>Adapter</Filter>
+    </ClInclude>
     <ClInclude Include="src\UseCase\FeatureCalculator.h">
+      <Filter>UseCase</Filter>
+    </ClInclude>
+    <ClInclude Include="src\UseCase\ImageFeatureExtractor.h">
       <Filter>UseCase</Filter>
     </ClInclude>
     <ClInclude Include="src\UseCase\ScoreNormalizer.h">
@@ -51,10 +63,22 @@
     <ClInclude Include="src\UseCase\RegionRelation.h">
       <Filter>UseCase</Filter>
     </ClInclude>
+    <ClInclude Include="src\UseCase\FeatureScaler.h">
+      <Filter>UseCase</Filter>
+    </ClInclude>
+    <ClInclude Include="src\UseCase\ClusterEngine.h">
+      <Filter>UseCase</Filter>
+    </ClInclude>
+    <ClInclude Include="src\UseCase\KSelector.h">
+      <Filter>UseCase</Filter>
+    </ClInclude>
     <ClInclude Include="src\Profile\IniFile.h">
       <Filter>Profile</Filter>
     </ClInclude>
     <ClInclude Include="src\Profile\ProfileLoader.h">
+      <Filter>Profile</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Profile\ProfileWriter.h">
       <Filter>Profile</Filter>
     </ClInclude>
   </ItemGroup>
@@ -63,6 +87,9 @@
       <Filter>Domain</Filter>
     </ClCompile>
     <ClCompile Include="src\Domain\FeatureVector.cpp">
+      <Filter>Domain</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Domain\FeatureMatrix.cpp">
       <Filter>Domain</Filter>
     </ClCompile>
     <ClCompile Include="src\Adapter\RegionExtractor.cpp">
@@ -74,7 +101,13 @@
     <ClCompile Include="src\Adapter\IPreprocessor.cpp">
       <Filter>Adapter</Filter>
     </ClCompile>
+    <ClCompile Include="src\Adapter\ClusterCsvIO.cpp">
+      <Filter>Adapter</Filter>
+    </ClCompile>
     <ClCompile Include="src\UseCase\FeatureCalculator.cpp">
+      <Filter>UseCase</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UseCase\ImageFeatureExtractor.cpp">
       <Filter>UseCase</Filter>
     </ClCompile>
     <ClCompile Include="src\UseCase\ScoreNormalizer.cpp">
@@ -86,10 +119,22 @@
     <ClCompile Include="src\UseCase\RegionRelation.cpp">
       <Filter>UseCase</Filter>
     </ClCompile>
+    <ClCompile Include="src\UseCase\FeatureScaler.cpp">
+      <Filter>UseCase</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UseCase\ClusterEngine.cpp">
+      <Filter>UseCase</Filter>
+    </ClCompile>
+    <ClCompile Include="src\UseCase\KSelector.cpp">
+      <Filter>UseCase</Filter>
+    </ClCompile>
     <ClCompile Include="src\Profile\IniFile.cpp">
       <Filter>Profile</Filter>
     </ClCompile>
     <ClCompile Include="src\Profile\ProfileLoader.cpp">
+      <Filter>Profile</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Profile\ProfileWriter.cpp">
       <Filter>Profile</Filter>
     </ClCompile>
   </ItemGroup>
