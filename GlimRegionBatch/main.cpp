@@ -430,6 +430,12 @@ int main(int argc, char** argv)
 	BinarizeParams binParams;   // 기본 FIXED 127 BRIGHT(기존 동작)
 	ExportOptions expOpts;      // scale-x/y=1.0, dumpbin 없음(기존 동작)
 
+	// --- 흑/백 독립 채널(dual) 옵션: --dual 이면 흑('B')·백('W')을 각각 다른 params 로 한 번에 추출 ---
+	bool dualMode = false;
+	bool blackEnabled = true, whiteEnabled = true;
+	BinarizeParams blackParams; blackParams.m_polarity = POLARITY_DARK;   blackParams.m_mode = BINMODE_OTSU; // 흑 기본: OTSU/DARK
+	BinarizeParams whiteParams; whiteParams.m_polarity = POLARITY_BRIGHT; whiteParams.m_mode = BINMODE_OTSU; // 백 기본: OTSU/BRIGHT
+
 	for (int i = 3; i < argc; ++i)
 	{
 		std::string a = argv[i];
@@ -563,6 +569,38 @@ int main(int argc, char** argv)
 			else if (i + 1 < argc) v = argv[++i];
 			binParams.m_offset = std::atof(v.c_str());
 		}
+		else if (a == "--dual")
+		{
+			dualMode = true;
+		}
+		else if (a == "--no-bk")
+		{
+			blackEnabled = false;
+		}
+		else if (a == "--no-wt")
+		{
+			whiteEnabled = false;
+		}
+		else if (a == "--bk-th" && i + 1 < argc)
+		{
+			std::string v = argv[++i];
+			if (v == "auto") blackParams.m_mode = BINMODE_OTSU;
+			else { blackParams.m_mode = BINMODE_FIXED; blackParams.m_threshold = std::atof(v.c_str()); }
+		}
+		else if (a == "--wt-th" && i + 1 < argc)
+		{
+			std::string v = argv[++i];
+			if (v == "auto") whiteParams.m_mode = BINMODE_OTSU;
+			else { whiteParams.m_mode = BINMODE_FIXED; whiteParams.m_threshold = std::atof(v.c_str()); }
+		}
+		else if (a == "--bk-offset" && i + 1 < argc)
+		{
+			blackParams.m_mode = BINMODE_MEAN_OFFSET; blackParams.m_offset = std::atof(argv[++i]);
+		}
+		else if (a == "--wt-offset" && i + 1 < argc)
+		{
+			whiteParams.m_mode = BINMODE_MEAN_OFFSET; whiteParams.m_offset = std::atof(argv[++i]);
+		}
 		else if (profilePath.empty())
 		{
 			profilePath = a; // 첫 비옵션 = 프로파일 경로
@@ -659,13 +697,27 @@ int main(int argc, char** argv)
 		std::cout << "dumpbin: " << expOpts.m_dumpBinDir << std::endl;
 
 	CpuPreprocessor preprocessor(binParams);
+	DualChannelPreprocessor dualPre(blackParams, blackEnabled, whiteParams, whiteEnabled);
+	const IPreprocessor* prep = dualMode
+		? static_cast<const IPreprocessor*>(&dualPre)
+		: static_cast<const IPreprocessor*>(&preprocessor);
+	if (dualMode)
+	{
+		const char* bkMode = (blackParams.m_mode == BINMODE_OTSU) ? "otsu"
+			: (blackParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset" : "fixed";
+		const char* wtMode = (whiteParams.m_mode == BINMODE_OTSU) ? "otsu"
+			: (whiteParams.m_mode == BINMODE_MEAN_OFFSET) ? "mean_offset" : "fixed";
+		std::cout << "binarize: DUAL  black(" << (blackEnabled ? "on" : "off") << ",dark," << bkMode
+			<< ",th=" << blackParams.m_threshold << ")  white(" << (whiteEnabled ? "on" : "off")
+			<< ",bright," << wtMode << ",th=" << whiteParams.m_threshold << ")" << std::endl;
+	}
 
 	BatchStat stat;
 	bool ok = false;
 	try
 	{
 		ok = CsvExporter::ExportFolder(inputDir, outputCsv, profilePtr, stat,
-			numThreads, &preprocessor, overlayDir, expOpts);
+			numThreads, prep, overlayDir, expOpts);
 	}
 	catch (const std::exception& e)
 	{

@@ -1,0 +1,84 @@
+* ============================================================
+*  halcon_compare.hdev  (HDevelop 프로그램 텍스트)
+*  용도: 우리 엔진과 "동일한 이진 마스크"에 할콘 Region Features 를 계산해
+*        halcon.csv 로 저장 → compare.py 가 우리 엔진 CSV 와 수치 비교.
+*
+*  사용법(HDevelop 데모/평가판):
+*   1) HDevelop 실행 → 새 프로그램 창에 이 텍스트 전체를 붙여넣기
+*   2) 아래 MaskDir / CsvPath 경로가 맞는지 확인
+*   3) F5(Run) 실행 → CsvPath 에 halcon.csv 생성
+*   4) compare.py 실행하여 비교표 생성
+*
+*  주의: 마스크는 8bit 0/255. threshold 로 255(전경)만 Region 화 → 우리 엔진과 동일 픽셀.
+* ============================================================
+
+MaskDir := 'C:/glim/pgm/glim-region-features/validation/halcon-compare/masks'
+CsvPath := 'C:/glim/pgm/glim-region-features/validation/halcon-compare/halcon.csv'
+
+* CSV 헤더 (compare.py 와 컬럼명 일치)
+Header := 'FileName,area,circularity,convexity,rectangularity,compactness,roundness,sides,ra,rb,phi,anisometry,bulkiness,structure_factor,contlength,diameter,connect_components,holes,euler_number,orientation'
+open_file (CsvPath, 'output', FileHandle)
+fwrite_string (FileHandle, Header + '\n')
+
+* 마스크 파일 목록(.png)
+list_files (MaskDir, ['files','follow_links'], Files)
+tuple_regexp_select (Files, '\\.png$', PngFiles)
+
+for Index := 0 to |PngFiles| - 1 by 1
+    File := PngFiles[Index]
+    tuple_split (File, '/\\', Parts)
+    FileName := Parts[|Parts| - 1]
+
+    read_image (Image, File)
+    * 컬러/멀티채널 대비 1채널화
+    count_channels (Image, Chn)
+    if (Chn > 1)
+        access_channel (Image, Image1, 1)
+    else
+        copy_image (Image, Image1)
+    endif
+
+    * 전경(255)만 Region 화 → 우리 엔진과 동일 픽셀
+    threshold (Image1, Region, 128, 255)
+
+    * ---- 특징 계산 ----
+    area_center (Region, Area, Row, Column)
+    circularity (Region, Circularity)
+    convexity (Region, Convexity)
+    rectangularity (Region, Rectangularity)
+    compactness (Region, Compactness)
+    roundness (Region, Distance, Sigma, Roundness, Sides)
+    elliptic_axis (Region, Ra, Rb, Phi)
+    eccentricity (Region, Anisometry, Bulkiness, StructureFactor)
+    contlength (Region, ContLength)
+    diameter_region (Region, Row1, Col1, Row2, Col2, Diameter)
+    connect_and_holes (Region, NumConnected, NumHoles)
+    orientation_region (Region, OrientPhi)
+    Euler := NumConnected - NumHoles
+
+    * ---- CSV 한 줄 ----
+    Line := FileName
+    Line := Line + ',' + Area$'.4f'
+    Line := Line + ',' + Circularity$'.6f'
+    Line := Line + ',' + Convexity$'.6f'
+    Line := Line + ',' + Rectangularity$'.6f'
+    Line := Line + ',' + Compactness$'.6f'
+    Line := Line + ',' + Roundness$'.6f'
+    Line := Line + ',' + Sides$'.4f'
+    Line := Line + ',' + Ra$'.4f'
+    Line := Line + ',' + Rb$'.4f'
+    Line := Line + ',' + Phi$'.6f'
+    Line := Line + ',' + Anisometry$'.6f'
+    Line := Line + ',' + Bulkiness$'.6f'
+    Line := Line + ',' + StructureFactor$'.6f'
+    Line := Line + ',' + ContLength$'.4f'
+    Line := Line + ',' + Diameter$'.4f'
+    Line := Line + ',' + NumConnected$'d'
+    Line := Line + ',' + NumHoles$'d'
+    Line := Line + ',' + Euler$'d'
+    Line := Line + ',' + OrientPhi$'.6f'
+    fwrite_string (FileHandle, Line + '\n')
+endfor
+
+close_file (FileHandle)
+* 완료: halcon.csv 생성됨. compare.py 실행하세요.

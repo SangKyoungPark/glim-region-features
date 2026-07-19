@@ -111,4 +111,50 @@ private:
 	BinarizeParams m_params; // 로드 후 불변(설정값). 계산 중 변경 금지.
 };
 
+// 흑/백 독립 채널 전처리기.
+//  흑 채널(태그 'B')과 백 채널(태그 'W')을 서로 다른 BinarizeParams 로 각각 이진화해
+//  BinarizeMulti 로 함께 반환한다. CsvExporter 의 채널 순회 플러밍(PROJECTION 과 동일 경로)에
+//  그대로 실려 B/W 두 행이 생성된다. ImageFeatureExtractor(단일 이미지 facade)의 폴더 배치 버전.
+//  각 채널의 극성은 params 로 지정(관례: 흑=POLARITY_DARK, 백=POLARITY_BRIGHT). 무상태/재진입 안전.
+class DualChannelPreprocessor : public IPreprocessor {
+public:
+	DualChannelPreprocessor(const BinarizeParams& blackParams, bool blackEnabled,
+		const BinarizeParams& whiteParams, bool whiteEnabled)
+		: m_black(blackParams), m_white(whiteParams)
+		, m_blackEnabled(blackEnabled), m_whiteEnabled(whiteEnabled) {}
+
+	// 단일 채널 요청 시: 흑 채널 우선(없으면 백). CsvExporter 는 BinarizeMulti 를 쓰므로 보조 용도.
+	virtual cv::Mat Binarize(const cv::Mat& src) const
+	{
+		if (m_blackEnabled) return m_black.Binarize(src);
+		if (m_whiteEnabled) return m_white.Binarize(src);
+		return cv::Mat();
+	}
+
+	// 흑('B')·백('W') 채널을 각각 독립 params 로 이진화해 반환(활성 채널만).
+	virtual std::vector<BinChannel> BinarizeMulti(const cv::Mat& src) const
+	{
+		std::vector<BinChannel> out;
+		if (src.empty())
+			return out;
+		if (m_blackEnabled)
+		{
+			cv::Mat b = m_black.Binarize(src);
+			if (!b.empty()) out.push_back(BinChannel(b, 'B'));
+		}
+		if (m_whiteEnabled)
+		{
+			cv::Mat w = m_white.Binarize(src);
+			if (!w.empty()) out.push_back(BinChannel(w, 'W'));
+		}
+		return out;
+	}
+
+private:
+	CpuPreprocessor m_black; // 흑 채널(로드 후 불변)
+	CpuPreprocessor m_white; // 백 채널(로드 후 불변)
+	bool m_blackEnabled;
+	bool m_whiteEnabled;
+};
+
 } // namespace Grf
