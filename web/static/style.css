@@ -3,10 +3,10 @@
   --bg: #000000;      /* pure black (DOS) */
   --bg2: #070707;     /* panel — near-black, neutral */
   --bg3: #121212;     /* input/raised — neutral dark gray */
-  --line: #1c7a3c;    /* phosphor-green border */
-  --fg: #46ff85;      /* bright phosphor green */
-  --fg-dim: #2ea75a;  /* dim green */
-  --accent: #46ff85;  /* bright green (buttons/active = inverted) */
+  --line: #1c7a3c;    /* phosphor-green border (구조/테두리는 초록 유지) */
+  --fg: #eef3f0;      /* 본문 글자 = 밝은 화이트(가독성) */
+  --fg-dim: #9fb2a8;  /* 보조 텍스트 = 옅은 회녹색(읽기 편함) */
+  --accent: #46ff85;  /* bright green (버튼/활성/헤더/강조 = 초록) */
   --accent2: #ffb642; /* amber (success) */
   --warn: #ff5555;    /* red alarm */
 }
@@ -17,7 +17,6 @@ body {
   color: var(--fg);
   font-family: "Consolas", "DejaVu Sans Mono", "D2Coding", "Courier New", monospace;
   font-size: 14px;
-  text-shadow: 0 0 1px rgba(70, 255, 133, 0.35); /* subtle phosphor glow */
 }
 h1 { font-size: 18px; margin: 0; }
 h2 { font-size: 14px; margin: 0 0 10px; color: var(--fg); }
@@ -280,8 +279,9 @@ main { padding: 18px; max-width: 1500px; margin: 0 auto; }
   border-radius: 0 !important;
 }
 
-/* 헤더 대문자 + 자간 (터미널 라벨) */
+/* 헤더 대문자 + 자간 (터미널 라벨), 헤더만 초록 강조(본문은 화이트) */
 h1, h2, .tab-btn { text-transform: uppercase; letter-spacing: 1px; }
+h1, h2 { color: var(--accent); }
 
 /* CRT 스캔라인 오버레이 (약하게) */
 body::after {
