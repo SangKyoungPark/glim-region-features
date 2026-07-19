@@ -1,0 +1,38 @@
+{
+  "circle_r60": {
+    "area": 11309.733552923255,
+    "circularity": 1.0,
+    "convexity": 1.0,
+    "anisometry": 1.0,
+    "ra": 60.0,
+    "rb": 60.0,
+    "roundness": 1.0,
+    "compactness": 1.0,
+    "contlength": 376.99111843077515,
+    "diameter": 120.0,
+    "rectangularity": 0.7853981633974483
+  },
+  "ellipse_50_20_a30": {
+    "area": 3141.5926535897934,
+    "ra": 50.0,
+    "rb": 20.0,
+    "anisometry": 2.5,
+    "diameter": 100.0,
+    "phi_deg": 30.0,
+    "contlength": 230.12812315207563
+  },
+  "rect_120x60": {
+    "area": 7200,
+    "rectangularity": 1.0,
+    "convexity": 1.0,
+    "anisometry": 2.0,
+    "contlength": 360,
+    "diameter": 134.16407864998737
+  },
+  "annulus_70_30": {
+    "area": 12566.370614359172,
+    "holes": 1,
+    "euler_number": 0,
+    "connect_components": 1
+  }
+}
