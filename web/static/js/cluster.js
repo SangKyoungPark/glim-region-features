@@ -20,7 +20,9 @@ async function runCluster() {
     thresh: s.thresh, offset: s.offset,
     kernel: s.kernel, blur: s.blur, response: s.response,
     blackTh: s.blackTh, whiteTh: s.whiteTh, projKernel: s.projKernel,
-    features: el("clFeatures").value,
+    features: (el("clFeatures").value === "__custom__")
+      ? (state.featureSet || []).join(",")   // 관심 feature(설정) 세트로 군집
+      : el("clFeatures").value,
     scaleMode: el("clScale").value,
     k: parseInt(el("clK").value, 10) || 0,
     kMax: parseInt(el("clKMax").value, 10) || 8,

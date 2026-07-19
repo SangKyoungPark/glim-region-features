@@ -197,6 +197,21 @@
         </div>
       </div>
     </div>
+
+    <div class="set-card">
+      <div class="hist-head">
+        <h2>관심 Feature <small style="font-weight:400;color:#9aa3b2">(결과 정렬 · 분석 히스토 · 군집에 공통 적용)</small></h2>
+        <span class="hint" id="featSelCount">선택 0개</span>
+      </div>
+      <div class="run-actions" style="margin-top:4px">
+        <button id="featPreset_shape8" class="ghost-btn">형상 8종</button>
+        <button id="featPreset_all" class="ghost-btn">전체</button>
+        <button id="featPreset_clear" class="ghost-btn">해제</button>
+        <input id="featSearch" type="text" placeholder="feature 검색" spellcheck="false" style="max-width:180px">
+      </div>
+      <div id="featureSelect" class="feature-select"></div>
+      <p class="hint">군집 탭 Feature 프리셋에서 <b>관심 Feature (설정)</b>를 고르면 이 세트로 군집화합니다.</p>
+    </div>
   </section>
 
   <!-- ===================== 결과 탭 ===================== -->
@@ -270,6 +285,7 @@
           <select id="clFeatures">
             <option value="shape8">형상 8종 (shape8)</option>
             <option value="all">전체 (all)</option>
+            <option value="__custom__">관심 Feature (설정)</option>
           </select>
         </div>
         <div class="field">
@@ -369,6 +385,7 @@
 <!-- app.js 를 기능별로 분리(빌드도구 없음 · 전역 함수 공유). 로드 순서 중요: util 먼저, main 마지막. -->
 <script src="/static/js/feature_docs.js"></script>
 <script src="/static/js/util.js"></script>
+<script src="/static/js/feature_select.js"></script>
 <script src="/static/js/tabs.js"></script>
 <script src="/static/js/settings.js"></script>
 <script src="/static/js/presets.js"></script>

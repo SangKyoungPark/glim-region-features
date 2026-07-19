@@ -62,6 +62,9 @@ el("detailOverlay").addEventListener("click", e => { if (e.target === el("detail
   const cs = el("histCode"); if (cs) cs.addEventListener("change", loadHistory);
 })();
 
+// 관심 feature 공통 선택(설정) — 정렬/히스토/군집 공유
+initFeatureSelectUI();
+
 // 특징값 용어집(홈 탭) + 검색
 renderFeatureGlossary();
 (function () {
