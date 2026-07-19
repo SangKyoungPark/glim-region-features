@@ -359,6 +359,22 @@ button { font-family: inherit; }
 #clRunBtn:disabled { opacity: 0.5; cursor: default; }
 #histSearchBtn { padding: 8px 18px; }
 
+/* 군집 범례 클릭(클러스터 강조 선택) */
+.legend .lg-click { cursor: pointer; padding: 2px 8px; border: 1px solid transparent; }
+.legend .lg-click:hover { border-color: var(--line); }
+.legend .lg-click.lg-sel { border-color: var(--fg); background: rgba(70,255,133,0.1); font-weight: 700; }
+
+/* 선택 클러스터 멤버 크롭 갤러리 */
+#clMembers:empty { display: none; }
+.cl-mem-head { margin-bottom: 8px; font-weight: 700; }
+.cl-mem-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.cl-mem { margin: 0; text-align: center; }
+.cl-mem img {
+  width: 72px; height: 72px; object-fit: contain;
+  background: #000; border: 1px solid var(--line); image-rendering: pixelated;
+}
+.cl-mem figcaption { font-size: 9px; color: var(--fg-dim); max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* 산점도 hover 이미지 툴팁 */
 svg .cl-hit { cursor: crosshair; }
 .cl-hovertip {

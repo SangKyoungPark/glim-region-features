@@ -44,8 +44,10 @@ async function runCluster() {
       return;
     }
     state.cluster = data;
+    state.clusterFocus = null;   // 새 군집 실행 시 강조 초기화
     renderClusterAxes();
     renderClusterScatter();
+    renderClusterMembers();
     el("clResultCard").style.display = "";
     el("clusterEmpty").style.display = "none";
     setStatus(`군집 완료 · K=${data.k} · silhouette=${fmt(data.silhouette, 3)} · ${data.points.length} 점`);
@@ -122,10 +124,15 @@ function renderClusterScatter() {
   svg += `<text x="${leftPad + plotW / 2}" y="${H - 6}" text-anchor="middle" fill="#e6e9ef" font-size="11">${esc(cols[xi] || "")}</text>`;
   svg += `<text x="14" y="${topPad + plotH / 2}" text-anchor="middle" fill="#e6e9ef" font-size="11" transform="rotate(-90 14 ${topPad + plotH / 2})">${esc(cols[yi] || "")}</text>`;
   // 점 (보이는 점 + 넓은 투명 히트영역: hover 시 이미지 툴팁)
+  //  선택 클러스터(state.clusterFocus)가 있으면 그 군집만 강조, 나머지는 흐림.
+  const focus = (state.clusterFocus == null) ? null : state.clusterFocus;
   pts.forEach(p => {
     const cx = sx(p.values[xi]), cy = sy(p.values[yi]);
-    const col = clusterColor(p.cluster);
-    svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="3.2" fill="${col}" fill-opacity="0.85" pointer-events="none"></circle>`;
+    const dim = (focus !== null && p.cluster !== focus);
+    const col = dim ? "#5a6b60" : clusterColor(p.cluster);
+    const r = dim ? 2.0 : (focus !== null ? 4.6 : 3.2);
+    const op = dim ? 0.18 : 0.9;
+    svg += `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${r}" fill="${col}" fill-opacity="${op}" pointer-events="none"></circle>`;
     svg += `<circle class="cl-hit" cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="8" fill="transparent"`
       + ` data-path="${esc(p.path || "")}" data-file="${esc(p.file)}"`
       + ` data-region="${p.regionIndex}" data-channel="${esc(p.channel || "")}" data-cluster="${p.cluster}"></circle>`;
@@ -195,11 +202,41 @@ function renderClusterLegend() {
   const cl = state.cluster;
   if (!box || !cl) return;
   const sizes = cl.clusterSizes || [];
+  const focus = state.clusterFocus;
   let html = `<span class="lg-item" style="font-weight:700">K = ${cl.k}</span>`;
   html += `<span class="lg-item">Silhouette = ${fmt(cl.silhouette, 3)}</span>`;
+  html += `<span class="lg-item lg-click${focus == null ? " lg-sel" : ""}" data-cluster="all">전체</span>`;
   for (let c = 0; c < cl.k; c++) {
     const n = (c < sizes.length) ? sizes[c] : 0;
-    html += `<span class="lg-item"><span class="lg-dot" style="background:${clusterColor(c)}"></span>Cluster ${c} (n=${n})</span>`;
+    const sel = (focus === c) ? " lg-sel" : "";
+    html += `<span class="lg-item lg-click${sel}" data-cluster="${c}"><span class="lg-dot" style="background:${clusterColor(c)}"></span>Cluster ${c} (n=${n})</span>`;
   }
   box.innerHTML = html;
+  // 범례 클릭 → 해당 클러스터 강조(재클릭/전체로 해제)
+  box.querySelectorAll(".lg-click").forEach(item => item.addEventListener("click", () => {
+    const v = item.getAttribute("data-cluster");
+    const cid = (v === "all") ? null : parseInt(v, 10);
+    state.clusterFocus = (state.clusterFocus === cid) ? null : cid; // 같은 것 재클릭 시 해제
+    renderClusterScatter();   // 산점도 + 범례 재렌더
+    renderClusterMembers();
+  }));
+}
+
+// 선택 클러스터의 멤버 크롭 이미지 갤러리(/api/image). 강조 없으면 비움.
+function renderClusterMembers() {
+  const box = el("clMembers");
+  if (!box) return;
+  const cl = state.cluster, focus = state.clusterFocus;
+  if (!cl || focus == null) { box.innerHTML = ""; return; }
+  const members = cl.points.filter(p => p.cluster === focus);
+  const MAX = 80;
+  const imgs = members.slice(0, MAX).map(p => p.path
+    ? `<figure class="cl-mem"><img src="/api/image?path=${encodeURIComponent(p.path)}" alt=""`
+      + ` title="${esc(p.file)} #${p.regionIndex}${p.channel ? " · " + esc(p.channel) : ""}">`
+      + `<figcaption>${esc(p.file)}</figcaption></figure>`
+    : "").join("");
+  const more = members.length > MAX ? `<div class="hint">…외 ${members.length - MAX}개</div>` : "";
+  box.innerHTML = `<div class="cl-mem-head" style="color:${clusterColor(focus)}">Cluster ${focus} · ${members.length} regions `
+    + `<span class="hint">(멤버 크롭 · 범례에서 다른 군집 선택/‘전체’로 해제)</span></div>`
+    + `<div class="cl-mem-grid">${imgs}</div>${more}`;
 }
