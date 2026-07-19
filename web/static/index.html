@@ -15,6 +15,7 @@
     <button class="tab-btn" data-tab="results">결과</button>
     <button class="tab-btn" data-tab="analysis">분석</button>
     <button class="tab-btn" data-tab="cluster">군집</button>
+    <button class="tab-btn" data-tab="history">이력</button>
   </nav>
   <span id="runStatus" class="status"></span>
 </header>
@@ -275,6 +276,25 @@
       <div id="clLegend" class="legend"></div>
     </div>
     <div id="clusterEmpty" class="empty big">아직 군집 결과가 없습니다. 위에서 군집화를 실행하세요.</div>
+  </section>
+
+  <section id="tab-history" class="tab-page">
+    <div class="set-card">
+      <div class="hist-head">
+        <h2>검사 이력 <small style="font-weight:400;color:#9aa3b2">(PostgreSQL 저장 · 분석 실행 시 자동 기록)</small></h2>
+        <button id="histRefreshBtn" class="ghost-btn">새로고침</button>
+      </div>
+      <p class="hint" id="histDbState">DB 상태 확인 중...</p>
+      <div id="histRunList" class="hist-runs"></div>
+    </div>
+
+    <div class="chart-card" id="histDetailCard" style="display:none">
+      <div class="hist-head">
+        <h2 id="histDetailTitle">Region 상세</h2>
+        <span class="hint" id="histDetailMeta"></span>
+      </div>
+      <div id="histRegionTable" class="hist-table-wrap"></div>
+    </div>
   </section>
 </main>
 

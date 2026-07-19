@@ -117,6 +117,83 @@ function showTab(name) {
     const clf = el("clFolder");
     if (clf && !clf.value.trim()) clf.value = el("folderPath").value.trim();
   }
+  if (name === "history") loadHistory();
+}
+
+// ---------- 검사 이력(History, PostgreSQL) ----------
+async function loadHistory() {
+  const listBox = el("histRunList");
+  const stateEl = el("histDbState");
+  if (!listBox) return;
+  listBox.innerHTML = '<div class="empty">불러오는 중...</div>';
+  try {
+    const res = await fetch("/api/runs?limit=200");
+    const data = await res.json();
+    if (!data.enabled) {
+      stateEl.textContent = "DB 비활성 상태입니다 (web/db_config.json 없음). 분석 결과가 저장되지 않습니다.";
+      listBox.innerHTML = '<div class="empty">저장된 이력이 없습니다.</div>';
+      return;
+    }
+    stateEl.textContent = `PostgreSQL 연결됨 · 저장된 실행 ${data.runs.length}건`;
+    renderRunList(data.runs);
+  } catch (e) {
+    stateEl.textContent = "이력 조회 실패: " + e;
+    listBox.innerHTML = '<div class="empty">조회 실패</div>';
+  }
+}
+
+function renderRunList(runs) {
+  const box = el("histRunList");
+  if (!runs.length) { box.innerHTML = '<div class="empty">저장된 이력이 없습니다. [설정]에서 분석을 실행하면 자동 저장됩니다.</div>'; return; }
+  box.innerHTML = runs.map(r => {
+    const when = (r.created_at || "").replace("T", " ").slice(0, 19);
+    return `<div class="hist-run" data-id="${r.id}">
+      <div class="hr-main">
+        <span class="hr-id">#${r.id}</span>
+        <span class="hr-folder">${esc(r.folder || "")}</span>
+      </div>
+      <div class="hr-meta">${when} · profile=${esc(r.profile || "none")} · bin=${esc(r.binarize_label || "")} · files=${r.total_files ?? "-"} · regions=${r.total_regions ?? "-"}</div>
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".hist-run").forEach(el2 =>
+    el2.addEventListener("click", () => loadRunDetail(parseInt(el2.getAttribute("data-id"), 10))));
+}
+
+async function loadRunDetail(runId) {
+  const card = el("histDetailCard");
+  const tbl = el("histRegionTable");
+  try {
+    const res = await fetch(`/api/runs/${runId}`);
+    const data = await res.json();
+    if (!data.ok) { toast(data.error || "상세 조회 실패", "error"); return; }
+    el("histDetailTitle").textContent = `Run #${runId} · Region ${data.regions.length}건`;
+    el("histDetailMeta").textContent = `${esc(data.run.folder || "")} · ${(data.run.created_at || "").replace("T", " ").slice(0, 19)}`;
+    renderRegionTable(data.regions);
+    card.style.display = "";
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    toast("상세 조회 실패: " + e, "error");
+  }
+}
+
+function renderRegionTable(regions) {
+  const box = el("histRegionTable");
+  if (!regions.length) { box.innerHTML = '<div class="empty">Region 없음</div>'; return; }
+  const num = v => (typeof v === "number" && Number.isFinite(v)) ? v.toFixed(3) : "-";
+  const head = `<tr><th>File</th><th>#</th><th>Ch</th><th>area</th><th>circularity</th>
+    <th>convexity</th><th>roundness</th><th>anisometry</th><th>code</th></tr>`;
+  const body = regions.map(r => `<tr>
+    <td class="rt-file">${esc(r.file_name || "")}</td>
+    <td>${r.region_index}</td>
+    <td>${esc(r.channel || "")}</td>
+    <td>${num(r.area)}</td>
+    <td>${num(r.circularity)}</td>
+    <td>${num(r.convexity)}</td>
+    <td>${num(r.roundness)}</td>
+    <td>${num(r.anisometry)}</td>
+    <td>${esc(r.classified_code || "")}</td>
+  </tr>`).join("");
+  box.innerHTML = `<table class="hist-table">${head}${body}</table>`;
 }
 
 // ---------- 설정 읽기/쓰기 ----------
@@ -1050,6 +1127,12 @@ el("clYAxis").addEventListener("change", () => { if (state.cluster) renderCluste
 
 el("detailClose").addEventListener("click", () => el("detailOverlay").classList.add("hidden"));
 el("detailOverlay").addEventListener("click", e => { if (e.target === el("detailOverlay")) el("detailOverlay").classList.add("hidden"); });
+
+// 이력 새로고침 버튼
+(function () {
+  const b = el("histRefreshBtn");
+  if (b) b.addEventListener("click", loadHistory);
+})();
 
 // 초기화
 syncBinFields();

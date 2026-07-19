@@ -317,6 +317,24 @@ input, select, textarea { caret-color: var(--fg); }
 /* 폼 라벨 앞 프롬프트 마커 */
 .field label::before { content: "> "; color: var(--fg-dim); }
 
+/* 검사 이력(History) 탭 */
+.hist-runs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.hist-run {
+  background: var(--bg3); border: 1px solid var(--line);
+  padding: 10px 14px; cursor: pointer;
+}
+.hist-run:hover { border-color: var(--fg); box-shadow: 0 0 6px rgba(70,255,133,0.3); }
+.hist-run .hr-main { display: flex; gap: 10px; align-items: baseline; }
+.hist-run .hr-id { color: var(--accent2); font-weight: 700; }
+.hist-run .hr-folder { color: var(--fg); word-break: break-all; }
+.hist-run .hr-meta { color: var(--fg-dim); font-size: 11px; margin-top: 3px; }
+.hist-table-wrap { overflow-x: auto; }
+.hist-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.hist-table th, .hist-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hist-table th { color: var(--fg-dim); text-align: right; position: sticky; top: 0; background: var(--bg2); }
+.hist-table td.rt-file, .hist-table th:first-child { text-align: left; }
+.hist-table tr:hover td { background: rgba(70,255,133,0.06); }
+
 /* 모든 버튼 모노스페이스 통일 */
 button { font-family: inherit; }
 

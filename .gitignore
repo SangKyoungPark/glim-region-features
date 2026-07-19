@@ -18,6 +18,9 @@ ipch/
 
 # Web dashboard runtime
 web/.venv/
+
+# DB 접속 정보(비밀번호 포함) — 절대 커밋 금지
+web/db_config.json
 web/cache/
 web/presets.json
 __pycache__/

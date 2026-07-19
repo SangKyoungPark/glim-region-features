@@ -20,8 +20,22 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import config
+import db  # 검사 결과 PostgreSQL 저장(설정 없으면 no-op)
 
 app = FastAPI(title="GlimRegion Dashboard")
+
+
+@app.on_event("startup")
+def _init_db():
+    # DB 설정(db_config.json / GRF_PG_DSN)이 있으면 스키마 보장. 없으면 조용히 건너뜀.
+    try:
+        if db.is_enabled():
+            ok = db.ensure_schema()
+            print("[db] enabled, schema ready" if ok else "[db] enabled but schema init failed")
+        else:
+            print("[db] disabled (db_config.json / GRF_PG_DSN 없음) — 저장 없이 동작")
+    except Exception as e:
+        print(f"[db] init error: {e}")
 
 STATIC_DIR = os.path.join(config.BASE_DIR, "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
@@ -534,6 +548,27 @@ def api_run(req: RunRequest):
     has_mm = any(c in columns for c in ("area_mm2", "width_mm", "height_mm", "diameter_mm"))
     has_channel = ("Channel" in columns)
 
+    # 결과 자동 저장(DB 설정 있을 때만; 실패/비활성 시 조용히 건너뜀 — 분석 자체는 영향 없음)
+    run_id = None
+    try:
+        total_regions = sum(1 for r in rows if int(r.get("regionIndex", -1)) >= 0)
+        total_files = len({r.get("fileName") for r in rows if r.get("fileName")})
+        meta = {
+            "folder": folder,
+            "profile": profile_key,
+            "binarize": bin_label,
+            "totalFiles": total_files,
+            "totalRegions": total_regions,
+            "params": {
+                "polarity": req.polarity, "mode": req.mode,
+                "thresh": req.thresh, "offset": req.offset,
+                "scaleX": sx, "scaleY": sy, "cacheHash": h,
+            },
+        }
+        run_id = db.insert_run(meta, rows)
+    except Exception:
+        run_id = None
+
     return {
         "ok": True,
         "hash": h,
@@ -550,7 +585,29 @@ def api_run(req: RunRequest):
         "defectDistribution": agg["defectDistribution"],
         "scoreByCode": agg["scoreByCode"],
         "rows": rows,
+        "runId": run_id,
+        "dbSaved": run_id is not None,
     }
+
+
+# ===================== 결과 이력(History) API =====================
+@app.get("/api/runs")
+def api_runs(limit: int = Query(200)):
+    """저장된 실행 이력(최근순). DB 비활성 시 enabled=false + 빈 목록."""
+    if not db.is_enabled():
+        return {"ok": True, "enabled": False, "runs": []}
+    return {"ok": True, "enabled": True, "runs": db.list_runs(limit=max(1, min(1000, limit)))}
+
+
+@app.get("/api/runs/{run_id}")
+def api_run_detail(run_id: int):
+    """실행 1건의 메타 + Region별 feature 값."""
+    if not db.is_enabled():
+        return JSONResponse({"ok": False, "error": "DB가 비활성 상태입니다."}, status_code=400)
+    data = db.get_run(run_id)
+    if data is None:
+        return JSONResponse({"ok": False, "error": f"run {run_id} 없음"}, status_code=404)
+    return {"ok": True, "run": data["run"], "regions": data["regions"]}
 
 
 # ===================== 군집(Cluster) API =====================
