@@ -158,16 +158,37 @@ def _iso(v):
     return v.isoformat() if isinstance(v, (datetime.datetime, datetime.date)) else v
 
 
-def list_runs(limit=200):
-    """최근 실행 목록(내림차순). 비활성 시 []."""
+def list_runs(limit=200, date_from=None, date_to=None, folder=None, code=None):
+    """실행 목록(내림차순). 필터: 기간(date_from~date_to, YYYY-MM-DD), 폴더(부분일치),
+    코드(그 코드의 Region 을 포함한 실행만). 비활성 시 []."""
     conn = get_conn()
     if conn is None:
         return []
     try:
+        where = []
+        params = []
+        if date_from:
+            where.append("created_at >= %s::date")
+            params.append(date_from)
+        if date_to:
+            where.append("created_at < (%s::date + INTERVAL '1 day')")  # 종료일 포함
+            params.append(date_to)
+        if folder:
+            where.append("folder ILIKE %s")
+            params.append("%" + folder + "%")
+        if code:
+            where.append("id IN (SELECT run_id FROM regions WHERE classified_code = %s)")
+            params.append(code)
+
+        sql = ("SELECT id, created_at, folder, profile, binarize_label, total_files, total_regions "
+               "FROM runs")
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY id DESC LIMIT %s"
+        params.append(limit)
+
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, created_at, folder, profile, binarize_label, total_files, total_regions "
-                "FROM runs ORDER BY id DESC LIMIT %s", (limit,))
+            cur.execute(sql, params)
             cols = [d.name for d in cur.description]
             out = []
             for row in cur.fetchall():
@@ -175,6 +196,24 @@ def list_runs(limit=200):
                 d["created_at"] = _iso(d.get("created_at"))
                 out.append(d)
             return out
+    except Exception:
+        return []
+    finally:
+        conn.close()
+
+
+def distinct_codes():
+    """저장된 분류 코드 목록(중복 제거, 오름차순). 코드 필터 드롭다운용."""
+    conn = get_conn()
+    if conn is None:
+        return []
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT DISTINCT classified_code FROM regions "
+                "WHERE classified_code IS NOT NULL AND classified_code <> '' "
+                "ORDER BY classified_code")
+            return [r[0] for r in cur.fetchall()]
     except Exception:
         return []
     finally:

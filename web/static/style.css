@@ -338,14 +338,15 @@ input, select, textarea { caret-color: var(--fg); }
 /* 모든 버튼 모노스페이스 통일 */
 button { font-family: inherit; }
 
-/* 군집화 실행 = 주 액션 버튼(그린 채움, 도스 버튼) */
-#clRunBtn {
+/* 주 액션 버튼(그린 채움, 도스 버튼) */
+#clRunBtn, #histSearchBtn {
   background: var(--accent); color: var(--bg); border: 1px solid var(--fg);
   padding: 10px 22px; font-weight: 700; cursor: pointer; font-size: 14px;
   text-transform: uppercase; letter-spacing: 1px;
 }
-#clRunBtn:hover { filter: brightness(1.15); }
+#clRunBtn:hover, #histSearchBtn:hover { filter: brightness(1.15); }
 #clRunBtn:disabled { opacity: 0.5; cursor: default; }
+#histSearchBtn { padding: 8px 18px; }
 
 /* 산점도 hover 이미지 툴팁 */
 svg .cl-hit { cursor: crosshair; }

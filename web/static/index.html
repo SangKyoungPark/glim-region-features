@@ -285,6 +285,31 @@
         <button id="histRefreshBtn" class="ghost-btn">새로고침</button>
       </div>
       <p class="hint" id="histDbState">DB 상태 확인 중...</p>
+      <div class="field-row hist-filter">
+        <div class="field">
+          <label for="histFrom">기간 시작</label>
+          <input id="histFrom" type="date">
+        </div>
+        <div class="field">
+          <label for="histTo">기간 끝</label>
+          <input id="histTo" type="date">
+        </div>
+        <div class="field">
+          <label for="histCode">분류 코드</label>
+          <select id="histCode"><option value="">(전체)</option></select>
+        </div>
+        <div class="field">
+          <label for="histFolder">폴더 검색</label>
+          <input id="histFolder" type="text" placeholder="폴더 경로 일부" spellcheck="false">
+        </div>
+        <div class="field hist-filter-actions">
+          <label>&nbsp;</label>
+          <div class="run-actions" style="margin-top:0">
+            <button id="histSearchBtn">검색</button>
+            <button id="histResetBtn" class="ghost-btn">초기화</button>
+          </div>
+        </div>
+      </div>
       <div id="histRunList" class="hist-runs"></div>
     </div>
 

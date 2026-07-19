@@ -121,20 +121,49 @@ function showTab(name) {
 }
 
 // ---------- 검사 이력(History, PostgreSQL) ----------
+function histQueryString() {
+  const p = new URLSearchParams();
+  p.set("limit", "300");
+  const f = el("histFrom").value, t = el("histTo").value;
+  const code = el("histCode").value, folder = el("histFolder").value.trim();
+  if (f) p.set("date_from", f);
+  if (t) p.set("date_to", t);
+  if (code) p.set("code", code);
+  if (folder) p.set("folder", folder);
+  return p.toString();
+}
+
+// 코드 필터 드롭다운 채우기(현재 선택 유지)
+async function loadHistCodes() {
+  const sel = el("histCode");
+  if (!sel) return;
+  try {
+    const res = await fetch("/api/codes");
+    const data = await res.json();
+    const cur = sel.value;
+    const codes = data.codes || [];
+    sel.innerHTML = '<option value="">(전체)</option>' +
+      codes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+    sel.value = cur;
+  } catch (e) { /* 무시 */ }
+}
+
 async function loadHistory() {
   const listBox = el("histRunList");
   const stateEl = el("histDbState");
   if (!listBox) return;
+  loadHistCodes();
   listBox.innerHTML = '<div class="empty">불러오는 중...</div>';
   try {
-    const res = await fetch("/api/runs?limit=200");
+    const res = await fetch("/api/runs?" + histQueryString());
     const data = await res.json();
     if (!data.enabled) {
       stateEl.textContent = "DB 비활성 상태입니다 (web/db_config.json 없음). 분석 결과가 저장되지 않습니다.";
       listBox.innerHTML = '<div class="empty">저장된 이력이 없습니다.</div>';
       return;
     }
-    stateEl.textContent = `PostgreSQL 연결됨 · 저장된 실행 ${data.runs.length}건`;
+    const filtered = !!(el("histFrom").value || el("histTo").value || el("histCode").value || el("histFolder").value.trim());
+    stateEl.textContent = `PostgreSQL 연결됨 · ${filtered ? "필터 " : ""}조회된 실행 ${data.runs.length}건`;
     renderRunList(data.runs);
   } catch (e) {
     stateEl.textContent = "이력 조회 실패: " + e;
@@ -1128,10 +1157,20 @@ el("clYAxis").addEventListener("change", () => { if (state.cluster) renderCluste
 el("detailClose").addEventListener("click", () => el("detailOverlay").classList.add("hidden"));
 el("detailOverlay").addEventListener("click", e => { if (e.target === el("detailOverlay")) el("detailOverlay").classList.add("hidden"); });
 
-// 이력 새로고침 버튼
+// 이력 탭 버튼/필터 배선
 (function () {
-  const b = el("histRefreshBtn");
-  if (b) b.addEventListener("click", loadHistory);
+  const b = el("histRefreshBtn"); if (b) b.addEventListener("click", loadHistory);
+  const s = el("histSearchBtn"); if (s) s.addEventListener("click", loadHistory);
+  const r = el("histResetBtn"); if (r) r.addEventListener("click", () => {
+    el("histFrom").value = ""; el("histTo").value = "";
+    el("histCode").value = ""; el("histFolder").value = "";
+    loadHistory();
+  });
+  ["histFolder", "histFrom", "histTo"].forEach(id => {
+    const e = el(id);
+    if (e) e.addEventListener("keydown", ev => { if (ev.key === "Enter") loadHistory(); });
+  });
+  const cs = el("histCode"); if (cs) cs.addEventListener("change", loadHistory);
 })();
 
 // 초기화

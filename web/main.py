@@ -592,11 +592,27 @@ def api_run(req: RunRequest):
 
 # ===================== 결과 이력(History) API =====================
 @app.get("/api/runs")
-def api_runs(limit: int = Query(200)):
-    """저장된 실행 이력(최근순). DB 비활성 시 enabled=false + 빈 목록."""
+def api_runs(limit: int = Query(200),
+             date_from: str = Query(None), date_to: str = Query(None),
+             folder: str = Query(None), code: str = Query(None)):
+    """저장된 실행 이력(최근순). 필터: 기간(date_from~date_to), 폴더(부분일치), 코드.
+    DB 비활성 시 enabled=false + 빈 목록."""
     if not db.is_enabled():
         return {"ok": True, "enabled": False, "runs": []}
-    return {"ok": True, "enabled": True, "runs": db.list_runs(limit=max(1, min(1000, limit)))}
+    runs = db.list_runs(
+        limit=max(1, min(1000, limit)),
+        date_from=(date_from or None), date_to=(date_to or None),
+        folder=(folder.strip() if folder else None),
+        code=(code.strip() if code else None))
+    return {"ok": True, "enabled": True, "runs": runs}
+
+
+@app.get("/api/codes")
+def api_codes():
+    """저장된 분류 코드 목록(코드 필터 드롭다운용)."""
+    if not db.is_enabled():
+        return {"ok": True, "enabled": False, "codes": []}
+    return {"ok": True, "enabled": True, "codes": db.distinct_codes()}
 
 
 @app.get("/api/runs/{run_id}")
