@@ -331,6 +331,17 @@
   </div>
 </div>
 
-<script src="/static/app.js"></script>
+<!-- app.js 를 기능별로 분리(빌드도구 없음 · 전역 함수 공유). 로드 순서 중요: util 먼저, main 마지막. -->
+<script src="/static/js/util.js"></script>
+<script src="/static/js/tabs.js"></script>
+<script src="/static/js/settings.js"></script>
+<script src="/static/js/presets.js"></script>
+<script src="/static/js/recent.js"></script>
+<script src="/static/js/preview.js"></script>
+<script src="/static/js/run.js"></script>
+<script src="/static/js/render.js"></script>
+<script src="/static/js/cluster.js"></script>
+<script src="/static/js/history.js"></script>
+<script src="/static/js/main.js"></script>
 </body>
 </html>
