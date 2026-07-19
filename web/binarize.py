@@ -88,3 +88,41 @@ def build_binarize(polarity, mode, thresh, offset, legacy_key=None, kernel=15, r
         flags += ["--thresh", str(thresh)]
         label = "%s-fixed-th%d" % (polarity, thresh)
     return flags, label
+
+
+def build_dual_binarize(bk_mode, bk_thresh, wt_mode, wt_thresh,
+                        bk_enabled=True, wt_enabled=True):
+    """흑/백 독립 채널(--dual) 플래그. 흑=DARK, 백=BRIGHT 고정, 각 채널 mode(otsu|fixed)+임계 독립.
+    반환: (flags, label). 한 채널이 disabled 면 --no-bk / --no-wt."""
+    def _clamp(v, dflt):
+        try:
+            return max(0, min(255, int(v)))
+        except (TypeError, ValueError):
+            return dflt
+
+    flags = ["--dual"]
+    label = "dual"
+
+    if not bk_enabled:
+        flags += ["--no-bk"]
+        label += "-noB"
+    elif (bk_mode or "otsu").lower() == "fixed":
+        t = _clamp(bk_thresh, 66)
+        flags += ["--bk-th", str(t)]
+        label += "-Bf%d" % t
+    else:  # otsu(auto)
+        flags += ["--bk-th", "auto"]
+        label += "-Ba"
+
+    if not wt_enabled:
+        flags += ["--no-wt"]
+        label += "-noW"
+    elif (wt_mode or "otsu").lower() == "fixed":
+        t = _clamp(wt_thresh, 200)
+        flags += ["--wt-th", str(t)]
+        label += "-Wf%d" % t
+    else:
+        flags += ["--wt-th", "auto"]
+        label += "-Wa"
+
+    return flags, label

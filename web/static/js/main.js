@@ -9,6 +9,7 @@ el("runBtn").addEventListener("click", runAnalysis);
 el("folderPath").addEventListener("keydown", e => { if (e.key === "Enter") runAnalysis(); });
 el("previewBtn").addEventListener("click", loadPreviewFiles);
 el("mode").addEventListener("change", () => { syncBinFields(); updatePreview(); });
+if (el("dual")) el("dual").addEventListener("change", syncBinFields);
 el("polarity").addEventListener("change", updatePreview);
 el("thresh").addEventListener("input", updatePreview);
 el("offset").addEventListener("input", updatePreview);

@@ -142,6 +142,31 @@
           </div>
         </div>
 
+        <div class="field" style="margin-top:10px">
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="dual" style="width:auto">
+            흑/백 독립 채널 (Dual) — 흑·백 불량을 각각 다른 임계로 한 번에 추출
+          </label>
+        </div>
+        <div class="field-row" id="dualFields" style="display:none">
+          <div class="field">
+            <label>흑(Dark) 채널 <small style="color:#9aa3b2">어두운 쪽</small></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label class="inline-field"><input type="checkbox" id="bkEnabled" checked style="width:auto"> 사용</label>
+              <select id="bkMode"><option value="otsu">자동(OTSU)</option><option value="fixed">고정</option></select>
+              <input id="bkThresh" type="number" min="0" max="255" value="66" title="어두운 쪽 &lt; N" style="max-width:80px">
+            </div>
+          </div>
+          <div class="field">
+            <label>백(Bright) 채널 <small style="color:#9aa3b2">밝은 쪽</small></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <label class="inline-field"><input type="checkbox" id="wtEnabled" checked style="width:auto"> 사용</label>
+              <select id="wtMode"><option value="otsu">자동(OTSU)</option><option value="fixed">고정</option></select>
+              <input id="wtThresh" type="number" min="0" max="255" value="200" title="밝은 쪽 &gt; N" style="max-width:80px">
+            </div>
+          </div>
+        </div>
+
         <h2 style="margin-top:18px">픽셀→mm 스케일 <small style="font-weight:400;color:#9aa3b2">(1.0=미환산, 공통)</small></h2>
         <div class="field-row">
           <div class="field">

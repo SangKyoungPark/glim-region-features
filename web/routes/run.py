@@ -18,7 +18,7 @@ import config
 import db  # 검사 결과 PostgreSQL 저장(설정 없으면 no-op)
 import engine
 import state
-from binarize import build_binarize
+from binarize import build_binarize, build_dual_binarize
 from csv_parse import _parse_csv, _summarize
 
 router = APIRouter()
@@ -42,6 +42,14 @@ class RunRequest(BaseModel):
     scaleX: float = 1.0          # 픽셀→mm 환산 X (공통, 1.0=미환산)
     scaleY: float = 1.0          # 픽셀→mm 환산 Y (공통, 1.0=미환산)
     binarize: str = "bright127"  # legacy: bright127 | dark127 | darkauto | brightauto | binary
+    # 흑/백 독립 채널(dual): 켜면 흑(DARK)·백(BRIGHT)을 각각 다른 임계로 한 번에 추출
+    dual: bool = False
+    bkMode: str = "otsu"         # 흑 채널 방식: otsu | fixed
+    bkThresh: int = 66           # 흑 fixed 임계(어두운 쪽 < N)
+    bkEnabled: bool = True       # 흑 채널 사용
+    wtMode: str = "otsu"         # 백 채널 방식: otsu | fixed
+    wtThresh: int = 200          # 백 fixed 임계(밝은 쪽 > N)
+    wtEnabled: bool = True       # 백 채널 사용
 
 
 # 이미지 확장자
@@ -72,11 +80,15 @@ def api_run(req: RunRequest):
     if profile_key not in config.PROFILE_MAP:
         profile_key = "none"
 
-    # 이진화 플래그 + 캐시 라벨(granular 우선, mode 비면 legacy binarize 폴백)
-    bin_flags, bin_label = build_binarize(
-        req.polarity, req.mode, req.thresh, req.offset, legacy_key=req.binarize,
-        kernel=req.kernel, response=req.response, blur=req.blur,
-        black_th=req.blackTh, white_th=req.whiteTh, proj_kernel=req.projKernel)
+    # 이진화 플래그 + 캐시 라벨. dual(흑/백 독립 채널) 이면 --dual 세트, 아니면 단일 채널.
+    if req.dual:
+        bin_flags, bin_label = build_dual_binarize(
+            req.bkMode, req.bkThresh, req.wtMode, req.wtThresh, req.bkEnabled, req.wtEnabled)
+    else:
+        bin_flags, bin_label = build_binarize(
+            req.polarity, req.mode, req.thresh, req.offset, legacy_key=req.binarize,
+            kernel=req.kernel, response=req.response, blur=req.blur,
+            black_th=req.blackTh, white_th=req.whiteTh, proj_kernel=req.projKernel)
 
     is_proj = "--proj" in bin_flags
 

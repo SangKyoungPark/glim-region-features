@@ -19,6 +19,14 @@ function readSettings() {
     projKernel: parseInt(el("projKernel").value, 10),
     scaleX: parseFloat(el("scaleX").value),
     scaleY: parseFloat(el("scaleY").value),
+    // 흑/백 독립 채널(dual)
+    dual: !!(el("dual") && el("dual").checked),
+    bkMode: el("bkMode") ? el("bkMode").value : "otsu",
+    bkThresh: el("bkThresh") ? (parseInt(el("bkThresh").value, 10) || 0) : 66,
+    bkEnabled: !el("bkEnabled") || el("bkEnabled").checked,
+    wtMode: el("wtMode") ? el("wtMode").value : "otsu",
+    wtThresh: el("wtThresh") ? (parseInt(el("wtThresh").value, 10) || 0) : 200,
+    wtEnabled: !el("wtEnabled") || el("wtEnabled").checked,
   };
 }
 function applySettings(s) {
@@ -54,4 +62,13 @@ function syncBinFields() {
   el("projKernelField").style.display = isProj ? "" : "none";
   // projection 은 흑/백 2채널 동시 산출이라 극성 무의미 → 극성 입력 숨김
   el("polarityField").style.display = isProj ? "none" : "";
+
+  // 흑/백 독립 채널(dual): 켜면 dual 컨트롤 표시 + 단일 채널 이진화 흐림(무시됨 안내)
+  const dualOn = !!(el("dual") && el("dual").checked);
+  if (el("dualFields")) el("dualFields").style.display = dualOn ? "" : "none";
+  ["polarityField", "threshField", "offsetField", "kernelField", "blurField",
+   "responseField", "blackThField", "whiteThField", "projKernelField"].forEach(id => {
+    const f = el(id);
+    if (f) f.style.opacity = dualOn ? "0.4" : "1";
+  });
 }
