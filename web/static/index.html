@@ -47,6 +47,14 @@
       </div>
       <div id="recentList" class="recent-list"></div>
     </div>
+
+    <div class="recent-card">
+      <div class="recent-head">
+        <h2>특징값(Feature) 설명 <small style="font-weight:400;color:#9aa3b2">(Halcon Region Features · 이름에 마우스 올리면 툴팁도 표시)</small></h2>
+        <input id="glossarySearch" type="text" placeholder="feature 검색" spellcheck="false" style="max-width:220px">
+      </div>
+      <div id="featureGlossary" class="glossary"></div>
+    </div>
   </section>
 
   <!-- ===================== 설정 탭 ===================== -->
@@ -332,6 +340,7 @@
 </div>
 
 <!-- app.js 를 기능별로 분리(빌드도구 없음 · 전역 함수 공유). 로드 순서 중요: util 먼저, main 마지막. -->
+<script src="/static/js/feature_docs.js"></script>
 <script src="/static/js/util.js"></script>
 <script src="/static/js/tabs.js"></script>
 <script src="/static/js/settings.js"></script>

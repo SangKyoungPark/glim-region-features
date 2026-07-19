@@ -90,8 +90,9 @@ function renderRegionTable(regions) {
   const box = el("histRegionTable");
   if (!regions.length) { box.innerHTML = '<div class="empty">Region 없음</div>'; return; }
   const num = v => (typeof v === "number" && Number.isFinite(v)) ? v.toFixed(3) : "-";
-  const head = `<tr><th>File</th><th>#</th><th>Ch</th><th>area</th><th>circularity</th>
-    <th>convexity</th><th>roundness</th><th>anisometry</th><th>code</th></tr>`;
+  const th = k => `<th title="${esc(featureTip(k))}">${k}</th>`;
+  const head = `<tr><th>File</th><th>#</th><th>Ch</th>${th("area")}${th("circularity")}` +
+    `${th("convexity")}${th("roundness")}${th("anisometry")}<th>code</th></tr>`;
   const body = regions.map(r => `<tr>
     <td class="rt-file">${esc(r.file_name || "")}</td>
     <td>${r.region_index}</td>

@@ -61,6 +61,13 @@ el("detailOverlay").addEventListener("click", e => { if (e.target === el("detail
   const cs = el("histCode"); if (cs) cs.addEventListener("change", loadHistory);
 })();
 
+// 특징값 용어집(홈 탭) + 검색
+renderFeatureGlossary();
+(function () {
+  const s = el("glossarySearch");
+  if (s) s.addEventListener("input", () => renderFeatureGlossary(s.value));
+})();
+
 // 초기화
 syncBinFields();
 renderRecent();

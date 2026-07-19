@@ -63,7 +63,7 @@ function renderClusterAxes() {
   const cols = (state.cluster && state.cluster.columns) || [];
   const xs = el("clXAxis"), ys = el("clYAxis");
   if (!xs || !ys) return;
-  const opts = cols.map((c, i) => `<option value="${i}">${esc(c)}</option>`).join("");
+  const opts = cols.map((c, i) => `<option value="${i}" title="${esc(featureTip(c))}">${esc(c)}</option>`).join("");
   xs.innerHTML = opts;
   ys.innerHTML = opts;
   xs.value = "0";

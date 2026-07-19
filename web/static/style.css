@@ -317,6 +317,17 @@ input, select, textarea { caret-color: var(--fg); }
 /* 폼 라벨 앞 프롬프트 마커 */
 .field label::before { content: "> "; color: var(--fg-dim); }
 
+/* 특징값 용어집(홈 탭) */
+#glossarySearch { background: var(--bg3); color: var(--fg); border: 1px solid var(--line); padding: 6px 10px; font-family: inherit; }
+.glossary { overflow: auto; max-height: 360px; margin-top: 8px; border: 1px solid var(--line); }
+.glossary-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.glossary-table th, .glossary-table td { padding: 5px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.glossary-table th { color: var(--fg-dim); position: sticky; top: 0; background: var(--bg2); z-index: 1; }
+.glossary-table .g-key { color: var(--accent2); white-space: nowrap; }
+.glossary-table .g-label { color: var(--fg); white-space: nowrap; }
+.glossary-table .g-hint { color: var(--fg-dim); }
+.glossary-table tr:hover td { background: rgba(70, 255, 133, 0.06); }
+
 /* 검사 이력(History) 탭 */
 .hist-runs { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .hist-run {

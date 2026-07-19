@@ -324,10 +324,32 @@ function openDetail(r) {
   Object.keys(raw).forEach(k => {
     if (k === "FileName" || k === "FilePath") return;
     const val = raw[k];
-    html += `<tr><td class="k">${esc(k)}</td><td class="v">${typeof val === "number" ? val.toFixed(4) : esc(val)}</td></tr>`;
+    html += `<tr><td class="k" title="${esc(featureTip(k))}">${esc(k)}</td><td class="v">${typeof val === "number" ? val.toFixed(4) : esc(val)}</td></tr>`;
   });
   html += `</table>`;
 
   el("detailBody").innerHTML = html;
   el("detailOverlay").classList.remove("hidden");
+}
+
+// 홈 탭 특징값 용어집(검색 가능). FEATURE_DOCS(feature_docs.js) 기반.
+function renderFeatureGlossary(filter) {
+  const box = el("featureGlossary");
+  if (!box || typeof FEATURE_DOCS === "undefined") return;
+  const q = (filter || "").trim().toLowerCase();
+  const keys = Object.keys(FEATURE_DOCS).filter(k => {
+    if (!q) return true;
+    const d = FEATURE_DOCS[k] || {};
+    return k.toLowerCase().includes(q) ||
+      (d.label || "").toLowerCase().includes(q) ||
+      (d.desc || "").toLowerCase().includes(q);
+  });
+  if (!keys.length) { box.innerHTML = '<div class="empty">일치하는 특징값 없음</div>'; return; }
+  const rows = keys.map(k => {
+    const d = FEATURE_DOCS[k] || {};
+    const hint = d.hint ? ` <span class="g-hint">(${esc(d.hint)})</span>` : "";
+    return `<tr><td class="g-key">${esc(k)}</td><td class="g-label">${esc(d.label || "")}</td>` +
+      `<td class="g-desc">${esc(d.desc || "")}${hint}</td></tr>`;
+  }).join("");
+  box.innerHTML = `<table class="glossary-table"><tr><th>feature</th><th>이름</th><th>설명</th></tr>${rows}</table>`;
 }
