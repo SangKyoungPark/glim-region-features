@@ -137,6 +137,7 @@ var FEATURE_CODE = {
 
 function featureCode(key) { return FEATURE_CODE[key] || null; }
 function featureHasCode(key) { return !!FEATURE_CODE[key]; }
+function featureFormula(key) { var c = FEATURE_CODE[key]; return c ? (c.formula || "") : ""; }
 
 // 'Code 보기' 모달 열기
 function openFeatureCode(key) {

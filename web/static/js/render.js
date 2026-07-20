@@ -373,10 +373,13 @@ function renderFeatureGlossary(filter) {
     const ex = (typeof featureExample === "function") ? featureExample(k) : "";
     const codeBtn = (typeof featureHasCode === "function" && featureHasCode(k))
       ? `<button class="g-code-btn" data-feat="${esc(k)}" title="수식 + OpenCV 코드">&lt;/&gt;</button>` : "";
+    const fml = (typeof featureFormula === "function") ? featureFormula(k) : "";
+    const fmlCell = fml ? esc(fml).replace(/\n/g, "<br>") : '<span class="fs-nf">–</span>';
     return `<tr><td class="g-key">${esc(k)}</td><td class="g-label">${esc(d.label || "")}</td>` +
-      `<td class="g-ex">${ex}</td><td class="g-desc">${esc(d.desc || "")}${hint}</td><td class="g-code">${codeBtn}</td></tr>`;
+      `<td class="g-ex">${ex}</td><td class="g-desc">${esc(d.desc || "")}${hint}</td>` +
+      `<td class="g-formula">${fmlCell}</td><td class="g-code">${codeBtn}</td></tr>`;
   }).join("");
-  box.innerHTML = `<table class="glossary-table"><tr><th>feature</th><th>이름</th><th>예시</th><th>설명</th><th>코드</th></tr>${rows}</table>`;
+  box.innerHTML = `<table class="glossary-table"><tr><th>feature</th><th>이름</th><th>예시</th><th>설명</th><th>수식</th><th>코드</th></tr>${rows}</table>`;
   box.querySelectorAll(".g-code-btn").forEach(btn => btn.addEventListener("click", () => {
     if (typeof openFeatureCode === "function") openFeatureCode(btn.getAttribute("data-feat"));
   }));

@@ -45,17 +45,20 @@ function renderFeatureSelect(filter) {
     var ex = (typeof featureExample === "function") ? featureExample(k) : "";
     var codeBtn = (typeof featureHasCode === "function" && featureHasCode(k))
       ? '<button class="fs-code-btn" data-feat="' + esc(k) + '" title="수식 + OpenCV 코드">&lt;/&gt;</button>' : "";
+    var fml = (typeof featureFormula === "function") ? featureFormula(k) : "";
+    var fmlCell = fml ? esc(fml).replace(/\n/g, "<br>") : '<span class="fs-nf">–</span>';
     return '<tr class="fs-row' + (on ? " fs-on" : "") + '" data-feat="' + esc(k) + '">'
       + '<td class="fs-chk"><input type="checkbox" data-feat="' + esc(k) + '"' + (on ? " checked" : "") + "></td>"
       + '<td class="fs-key">' + esc(k) + "</td>"
       + '<td class="fs-label">' + esc(d.label || "") + "</td>"
       + '<td class="fs-ex">' + ex + "</td>"
       + '<td class="fs-desc">' + esc(d.desc || "") + hint + "</td>"
+      + '<td class="fs-formula">' + fmlCell + "</td>"
       + '<td class="fs-code">' + codeBtn + "</td>"
       + "</tr>";
   }).join("");
   box.innerHTML = '<table class="feat-table"><thead><tr>'
-    + "<th></th><th>feature</th><th>이름</th><th>예시</th><th>설명</th><th>코드</th></tr></thead><tbody>"
+    + "<th></th><th>feature</th><th>이름</th><th>예시</th><th>설명</th><th>수식</th><th>코드</th></tr></thead><tbody>"
     + rows + "</tbody></table>";
   // 코드 보기 버튼(행 토글과 분리)
   box.querySelectorAll(".fs-code-btn").forEach(function (btn) {

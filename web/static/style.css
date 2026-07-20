@@ -373,6 +373,10 @@ button { font-family: inherit; }
 .feat-ex-svg { vertical-align: middle; }
 .glossary-table .g-ex { width: 54px; text-align: center; padding: 2px 4px; }
 
+/* feature 수식 열 */
+.feat-table .fs-formula, .glossary-table .g-formula { color: var(--accent2); font-size: 11px; min-width: 170px; max-width: 300px; line-height: 1.5; }
+.fs-nf { color: var(--fg-dim); }
+
 /* feature 코드 보기 버튼 + 수식/OpenCV 모달 */
 .fs-code, .g-code { width: 46px; text-align: center; }
 .fs-code-btn, .g-code-btn {
