@@ -42,15 +42,17 @@ function renderFeatureSelect(filter) {
     var d = (typeof FEATURE_DOCS !== "undefined") ? (FEATURE_DOCS[k] || {}) : {};
     var on = setMap[k] ? 1 : 0;
     var hint = d.hint ? ' <span class="fs-hint">(' + esc(d.hint) + ")</span>" : "";
+    var ex = (typeof featureExample === "function") ? featureExample(k) : "";
     return '<tr class="fs-row' + (on ? " fs-on" : "") + '" data-feat="' + esc(k) + '">'
       + '<td class="fs-chk"><input type="checkbox" data-feat="' + esc(k) + '"' + (on ? " checked" : "") + "></td>"
       + '<td class="fs-key">' + esc(k) + "</td>"
       + '<td class="fs-label">' + esc(d.label || "") + "</td>"
+      + '<td class="fs-ex">' + ex + "</td>"
       + '<td class="fs-desc">' + esc(d.desc || "") + hint + "</td>"
       + "</tr>";
   }).join("");
   box.innerHTML = '<table class="feat-table"><thead><tr>'
-    + "<th></th><th>feature</th><th>이름</th><th>설명</th></tr></thead><tbody>"
+    + "<th></th><th>feature</th><th>이름</th><th>예시</th><th>설명</th></tr></thead><tbody>"
     + rows + "</tbody></table>";
 
   function toggle(k, checked) {

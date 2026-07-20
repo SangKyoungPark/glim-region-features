@@ -370,8 +370,9 @@ function renderFeatureGlossary(filter) {
   const rows = keys.map(k => {
     const d = FEATURE_DOCS[k] || {};
     const hint = d.hint ? ` <span class="g-hint">(${esc(d.hint)})</span>` : "";
+    const ex = (typeof featureExample === "function") ? featureExample(k) : "";
     return `<tr><td class="g-key">${esc(k)}</td><td class="g-label">${esc(d.label || "")}</td>` +
-      `<td class="g-desc">${esc(d.desc || "")}${hint}</td></tr>`;
+      `<td class="g-ex">${ex}</td><td class="g-desc">${esc(d.desc || "")}${hint}</td></tr>`;
   }).join("");
-  box.innerHTML = `<table class="glossary-table"><tr><th>feature</th><th>이름</th><th>설명</th></tr>${rows}</table>`;
+  box.innerHTML = `<table class="glossary-table"><tr><th>feature</th><th>이름</th><th>예시</th><th>설명</th></tr>${rows}</table>`;
 }

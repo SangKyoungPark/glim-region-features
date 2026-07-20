@@ -369,6 +369,9 @@ button { font-family: inherit; }
 .feat-table .fs-key { color: var(--accent2); white-space: nowrap; }
 .feat-table .fs-label { color: var(--fg); white-space: nowrap; }
 .feat-table .fs-desc, .feat-table .fs-hint { color: var(--fg-dim); }
+.feat-table .fs-ex { width: 54px; text-align: center; padding: 2px 4px; }
+.feat-ex-svg { vertical-align: middle; }
+.glossary-table .g-ex { width: 54px; text-align: center; padding: 2px 4px; }
 .feat-table tr.fs-row { cursor: pointer; }
 .feat-table tr.fs-row:hover td { background: rgba(70, 255, 133, 0.06); }
 .feat-table tr.fs-on td { background: rgba(70, 255, 133, 0.1); }
