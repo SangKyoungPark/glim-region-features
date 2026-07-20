@@ -25,6 +25,7 @@ function updateFeatureSetCount() {
   if (c) c.textContent = "선택 " + (state.featureSet ? state.featureSet.length : 0) + "개";
 }
 
+// 관심 feature 선택을 표(체크 | feature | 이름 | 설명)로 렌더
 function renderFeatureSelect(filter) {
   var box = el("featureSelect");
   if (!box) return;
@@ -32,26 +33,44 @@ function renderFeatureSelect(filter) {
   var keys = selectableFeatureKeys().filter(function (k) {
     if (!q) return true;
     var d = (typeof FEATURE_DOCS !== "undefined") ? (FEATURE_DOCS[k] || {}) : {};
-    return k.toLowerCase().indexOf(q) >= 0 || (d.label || "").toLowerCase().indexOf(q) >= 0;
+    return k.toLowerCase().indexOf(q) >= 0 || (d.label || "").toLowerCase().indexOf(q) >= 0
+      || (d.desc || "").toLowerCase().indexOf(q) >= 0;
   });
   var setMap = {};
   (state.featureSet || []).forEach(function (k) { setMap[k] = 1; });
-  box.innerHTML = keys.map(function (k) {
+  var rows = keys.map(function (k) {
     var d = (typeof FEATURE_DOCS !== "undefined") ? (FEATURE_DOCS[k] || {}) : {};
-    var checked = setMap[k] ? " checked" : "";
-    var tip = (typeof featureTip === "function") ? featureTip(k) : k;
-    return '<label class="feat-chk" title="' + esc(tip) + '">'
-      + '<input type="checkbox" data-feat="' + esc(k) + '"' + checked + '> '
-      + esc(k) + (d.label ? ' <span class="fc-lbl">' + esc(d.label) + '</span>' : '')
-      + '</label>';
+    var on = setMap[k] ? 1 : 0;
+    var hint = d.hint ? ' <span class="fs-hint">(' + esc(d.hint) + ")</span>" : "";
+    return '<tr class="fs-row' + (on ? " fs-on" : "") + '" data-feat="' + esc(k) + '">'
+      + '<td class="fs-chk"><input type="checkbox" data-feat="' + esc(k) + '"' + (on ? " checked" : "") + "></td>"
+      + '<td class="fs-key">' + esc(k) + "</td>"
+      + '<td class="fs-label">' + esc(d.label || "") + "</td>"
+      + '<td class="fs-desc">' + esc(d.desc || "") + hint + "</td>"
+      + "</tr>";
   }).join("");
+  box.innerHTML = '<table class="feat-table"><thead><tr>'
+    + "<th></th><th>feature</th><th>이름</th><th>설명</th></tr></thead><tbody>"
+    + rows + "</tbody></table>";
+
+  function toggle(k, checked) {
+    var i = state.featureSet.indexOf(k);
+    if (checked && i < 0) state.featureSet.push(k);
+    else if (!checked && i >= 0) state.featureSet.splice(i, 1);
+    afterFeatureSetChange();
+  }
   box.querySelectorAll("input[data-feat]").forEach(function (cb) {
     cb.addEventListener("change", function () {
-      var k = cb.getAttribute("data-feat");
-      var i = state.featureSet.indexOf(k);
-      if (cb.checked && i < 0) state.featureSet.push(k);
-      else if (!cb.checked && i >= 0) state.featureSet.splice(i, 1);
-      afterFeatureSetChange();
+      toggle(cb.getAttribute("data-feat"), cb.checked);
+      var tr = cb.closest("tr"); if (tr) tr.classList.toggle("fs-on", cb.checked);
+    });
+  });
+  // 행 클릭(체크박스 외)해도 토글 — 표에서 체크 편의
+  box.querySelectorAll("tr.fs-row").forEach(function (tr) {
+    tr.addEventListener("click", function (e) {
+      if (e.target && e.target.tagName === "INPUT") return; // 체크박스 직접 클릭은 change 가 처리
+      var cb = tr.querySelector("input[data-feat]");
+      if (cb) { cb.checked = !cb.checked; toggle(cb.getAttribute("data-feat"), cb.checked); tr.classList.toggle("fs-on", cb.checked); }
     });
   });
   updateFeatureSetCount();

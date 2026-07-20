@@ -361,14 +361,22 @@ button { font-family: inherit; }
 
 /* 관심 feature 다중 선택(설정) */
 #featSearch { background: var(--bg3); color: var(--fg); border: 1px solid var(--line); padding: 6px 10px; font-family: inherit; }
-.feature-select {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-  gap: 2px 10px; margin-top: 10px; max-height: 260px; overflow-y: auto;
-  border: 1px solid var(--line); padding: 8px;
-}
-.feat-chk { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; padding: 2px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.feat-chk input { width: auto; }
-.feat-chk .fc-lbl { color: var(--fg-dim); }
+.feature-select { margin-top: 10px; max-height: 340px; overflow: auto; border: 1px solid var(--line); }
+.feat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.feat-table th, .feat-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.feat-table thead th { position: sticky; top: 0; background: var(--bg2); color: var(--fg-dim); z-index: 1; }
+.feat-table .fs-chk { width: 30px; text-align: center; }
+.feat-table .fs-key { color: var(--accent2); white-space: nowrap; }
+.feat-table .fs-label { color: var(--fg); white-space: nowrap; }
+.feat-table .fs-desc, .feat-table .fs-hint { color: var(--fg-dim); }
+.feat-table tr.fs-row { cursor: pointer; }
+.feat-table tr.fs-row:hover td { background: rgba(70, 255, 133, 0.06); }
+.feat-table tr.fs-on td { background: rgba(70, 255, 133, 0.1); }
+.feat-table input { width: auto; }
+
+/* 결과 과다/빈 경고 + 갤러리 표시 상한 안내 */
+#resultWarn .rw-msg { background: #241a05; border: 1px solid var(--accent2); color: #ffd58a; padding: 9px 13px; margin: 0 0 12px; font-size: 12px; line-height: 1.5; }
+.gallery-cap-note { background: var(--bg3); border: 1px solid var(--accent2); color: var(--accent2); padding: 8px 12px; margin-bottom: 8px; font-size: 12px; }
 
 /* 군집 범례 클릭(클러스터 강조 선택) */
 .legend .lg-click { cursor: pointer; padding: 2px 8px; border: 1px solid transparent; }

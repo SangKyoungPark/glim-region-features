@@ -26,6 +26,19 @@ function renderSummary() {
   ];
   el("summary").innerHTML = cards.map(([lbl, num]) =>
     `<div class="stat-card"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`).join("");
+
+  // 0 region / 과분할 경고
+  const box = el("resultWarn");
+  if (box) {
+    const imgs = s.totalImages || 0, regs = s.totalRegions || 0;
+    const avg = imgs ? regs / imgs : 0;
+    let w = "";
+    if (regs === 0)
+      w = "⚠ 검출된 Region 0개 — 이진화 방식/극성을 바꿔보세요 (설정 탭). 어두운 불량이면 <b>Dark</b>, 이미 이진화된 크롭이면 <b>Binary</b>, 밝은 불량이면 <b>Bright</b>.";
+    else if (avg > 20)
+      w = `⚠ 과분할 의심 — 이미지 ${imgs}장에서 Region <b>${regs.toLocaleString()}개</b> (평균 ${avg.toFixed(0)}/장). 텍스처 노이즈까지 잡혔을 수 있어요. 이진화 임계/극성을 조정하거나, 이 크롭이 이미 이진화면 <b>Binary</b> 방식을 쓰세요. (결과가 많아 갤러리는 상위 일부만 표시)`;
+    box.innerHTML = w ? `<div class="rw-msg">${w}</div>` : "";
+  }
 }
 
 // 불량 분포: 가로 막대 (SVG)
@@ -236,7 +249,16 @@ function renderGallery() {
 
   const gallery = el("gallery");
   gallery.innerHTML = "";
-  rows.forEach(r => gallery.appendChild(buildCard(r, feats)));
+  // 렌더 상한: 카드가 수만 개면 브라우저가 멈추므로 상위 CAP 개만 렌더.
+  const CAP = 300;
+  if (rows.length > CAP) {
+    const note = document.createElement("div");
+    note.className = "gallery-cap-note";
+    note.innerHTML = `표시 제한: 총 <b>${rows.length.toLocaleString()}개</b> 중 상위 ${CAP}개만 렌더합니다. `
+      + `정렬/코드·채널 필터로 좁히거나 <b>CSV 다운로드</b>로 전체를 확인하세요.`;
+    gallery.appendChild(note);
+  }
+  rows.slice(0, CAP).forEach(r => gallery.appendChild(buildCard(r, feats)));
 }
 
 function buildCard(r, feats) {
