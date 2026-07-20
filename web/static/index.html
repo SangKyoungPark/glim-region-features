@@ -375,6 +375,16 @@
   </section>
 </main>
 
+<!-- feature 수식 + OpenCV 코드 모달 -->
+<div id="featCodeOverlay" class="code-overlay hidden">
+  <div class="code-panel">
+    <button class="code-close" id="featCodeClose">✕</button>
+    <h2 id="featCodeTitle">Feature</h2>
+    <div class="code-sec"><h3>수식</h3><pre id="featCodeFormula"></pre></div>
+    <div class="code-sec"><h3>OpenCV (C++)</h3><pre id="featCodeOpencv"></pre></div>
+  </div>
+</div>
+
 <!-- 상세 패널(모달) -->
 <div id="detailOverlay" class="detail-overlay hidden">
   <div class="detail-panel">
@@ -386,6 +396,7 @@
 <!-- app.js 를 기능별로 분리(빌드도구 없음 · 전역 함수 공유). 로드 순서 중요: util 먼저, main 마지막. -->
 <script src="/static/js/feature_docs.js"></script>
 <script src="/static/js/feature_examples.js"></script>
+<script src="/static/js/feature_code.js"></script>
 <script src="/static/js/util.js"></script>
 <script src="/static/js/feature_select.js"></script>
 <script src="/static/js/tabs.js"></script>

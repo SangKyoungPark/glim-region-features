@@ -43,17 +43,27 @@ function renderFeatureSelect(filter) {
     var on = setMap[k] ? 1 : 0;
     var hint = d.hint ? ' <span class="fs-hint">(' + esc(d.hint) + ")</span>" : "";
     var ex = (typeof featureExample === "function") ? featureExample(k) : "";
+    var codeBtn = (typeof featureHasCode === "function" && featureHasCode(k))
+      ? '<button class="fs-code-btn" data-feat="' + esc(k) + '" title="수식 + OpenCV 코드">&lt;/&gt;</button>' : "";
     return '<tr class="fs-row' + (on ? " fs-on" : "") + '" data-feat="' + esc(k) + '">'
       + '<td class="fs-chk"><input type="checkbox" data-feat="' + esc(k) + '"' + (on ? " checked" : "") + "></td>"
       + '<td class="fs-key">' + esc(k) + "</td>"
       + '<td class="fs-label">' + esc(d.label || "") + "</td>"
       + '<td class="fs-ex">' + ex + "</td>"
       + '<td class="fs-desc">' + esc(d.desc || "") + hint + "</td>"
+      + '<td class="fs-code">' + codeBtn + "</td>"
       + "</tr>";
   }).join("");
   box.innerHTML = '<table class="feat-table"><thead><tr>'
-    + "<th></th><th>feature</th><th>이름</th><th>예시</th><th>설명</th></tr></thead><tbody>"
+    + "<th></th><th>feature</th><th>이름</th><th>예시</th><th>설명</th><th>코드</th></tr></thead><tbody>"
     + rows + "</tbody></table>";
+  // 코드 보기 버튼(행 토글과 분리)
+  box.querySelectorAll(".fs-code-btn").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (typeof openFeatureCode === "function") openFeatureCode(btn.getAttribute("data-feat"));
+    });
+  });
 
   function toggle(k, checked) {
     var i = state.featureSet.indexOf(k);
@@ -70,7 +80,7 @@ function renderFeatureSelect(filter) {
   // 행 클릭(체크박스 외)해도 토글 — 표에서 체크 편의
   box.querySelectorAll("tr.fs-row").forEach(function (tr) {
     tr.addEventListener("click", function (e) {
-      if (e.target && e.target.tagName === "INPUT") return; // 체크박스 직접 클릭은 change 가 처리
+      if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON")) return; // 체크박스·코드버튼은 각자 처리
       var cb = tr.querySelector("input[data-feat]");
       if (cb) { cb.checked = !cb.checked; toggle(cb.getAttribute("data-feat"), cb.checked); tr.classList.toggle("fs-on", cb.checked); }
     });

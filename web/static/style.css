@@ -372,6 +372,22 @@ button { font-family: inherit; }
 .feat-table .fs-ex { width: 54px; text-align: center; padding: 2px 4px; }
 .feat-ex-svg { vertical-align: middle; }
 .glossary-table .g-ex { width: 54px; text-align: center; padding: 2px 4px; }
+
+/* feature 코드 보기 버튼 + 수식/OpenCV 모달 */
+.fs-code, .g-code { width: 46px; text-align: center; }
+.fs-code-btn, .g-code-btn {
+  background: transparent; color: var(--accent2); border: 1px solid var(--line);
+  font-family: inherit; font-size: 12px; padding: 2px 7px; cursor: pointer;
+}
+.fs-code-btn:hover, .g-code-btn:hover { border-color: var(--accent2); background: rgba(255,182,66,0.12); }
+.code-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.72); z-index: 10001; display: flex; align-items: center; justify-content: center; }
+.code-overlay.hidden { display: none; }
+.code-panel { background: #050505; border: 1px solid var(--fg); box-shadow: 0 0 22px rgba(70,255,133,0.3); max-width: 760px; width: 92vw; max-height: 86vh; overflow: auto; padding: 18px 22px; position: relative; }
+.code-panel h2 { color: var(--accent); margin: 0 0 6px; }
+.code-panel h3 { color: var(--fg-dim); font-size: 12px; margin: 16px 0 5px; text-transform: uppercase; letter-spacing: 1px; }
+.code-panel pre { background: var(--bg3); border: 1px solid var(--line); color: var(--fg); padding: 11px 13px; overflow-x: auto; white-space: pre; font-family: inherit; font-size: 12px; line-height: 1.55; margin: 0; }
+#featCodeFormula { color: var(--accent2); }
+.code-close { position: absolute; top: 10px; right: 12px; background: var(--bg3); color: var(--fg); border: 1px solid var(--line); width: 28px; height: 28px; cursor: pointer; font-family: inherit; }
 .feat-table tr.fs-row { cursor: pointer; }
 .feat-table tr.fs-row:hover td { background: rgba(70, 255, 133, 0.06); }
 .feat-table tr.fs-on td { background: rgba(70, 255, 133, 0.1); }
